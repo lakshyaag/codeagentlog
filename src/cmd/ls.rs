@@ -5,8 +5,9 @@ use anyhow::Result;
 
 use super::{Ctx, SessionJson, display_cwd, session_summary, to_json};
 use crate::catalog::Catalog;
+use crate::scope::Scope;
 use crate::text::{shell_quote, tilde};
-use crate::{Group, LsArgs};
+use crate::{Group, LsArgs, style};
 
 pub fn run(ctx: &Ctx, args: LsArgs) -> Result<String> {
     let base = ctx.base(args.path.as_deref());
@@ -36,15 +37,15 @@ pub fn run(ctx: &Ctx, args: LsArgs) -> Result<String> {
     }
 
     if found.is_empty() {
+        let place = if scope == Scope::All { String::new() } else { format!(" in {}", tilde(&base)) };
+        let since_note = if since.is_some() { " (with --since)" } else { "" };
         return Ok(format!(
-            "no sessions {} {}{}\ntry: codeagentlog ls --near, codeagentlog ls --all, or codeagentlog tree\n",
-            if scope == crate::scope::Scope::All { "found" } else { "in" },
-            if scope == crate::scope::Scope::All { String::new() } else { tilde(&base) },
-            if since.is_some() { " (with --since)" } else { "" },
+            "no sessions{place}{since_note}\ntry: codeagentlog ls --near, codeagentlog ls --all, or codeagentlog tree\n"
         ));
     }
 
-    let printer = Printer { catalog: &catalog, current, prompts: args.prompts, expand_children: args.children };
+    let printer =
+        Printer { catalog: &catalog, current, prompts: args.prompts, recent: args.recent, expand: args.children };
     let mut out = String::new();
     match args.group {
         Group::Agent => {
@@ -54,22 +55,22 @@ pub fn run(ctx: &Ctx, args: LsArgs) -> Result<String> {
                 if mine.is_empty() {
                     continue;
                 }
-                writeln!(out, "{agent}")?;
+                writeln!(out, "{}", style::heading(agent.name()))?;
                 for (folder, sessions) in by_folder(&catalog, &mine) {
-                    writeln!(out, "  {folder}")?;
+                    writeln!(out, "  {}", style::path(&folder))?;
                     sessions.iter().for_each(|&i| printer.session(&mut out, i, "    "));
                 }
             }
         }
         Group::Folder => {
             for (folder, sessions) in by_folder(&catalog, &found) {
-                writeln!(out, "{folder}")?;
+                writeln!(out, "{}", style::path(&folder))?;
                 sessions.iter().for_each(|&i| printer.session(&mut out, i, "  "));
             }
         }
         Group::None => {
             for &i in &found {
-                writeln!(out, "{}", display_cwd(&catalog.entries[i]))?;
+                writeln!(out, "{}", style::path(&display_cwd(&catalog.entries[i])))?;
                 printer.session(&mut out, i, "  ");
             }
         }
@@ -80,12 +81,13 @@ pub fn run(ctx: &Ctx, args: LsArgs) -> Result<String> {
         if let Some(p) = &args.path {
             cmd.push(shell_quote(&p.to_string_lossy()));
         }
-        if scope != crate::scope::Scope::Under {
+        if scope != Scope::Under {
             cmd.push(scope.flag().into());
         }
         cmd.extend(args.filters.to_args());
         cmd.push(format!("--limit {}", (args.limit * 2).max(args.limit + 20)));
-        writeln!(out, "\n-- showing {} of {total}. more: {}", found.len(), cmd.join(" "))?;
+        let note = format!("showing {} of {total}. more:", found.len());
+        writeln!(out, "\n{}", style::footer(&note, Some(&cmd.join(" "))))?;
     }
     Ok(out)
 }
@@ -107,7 +109,8 @@ struct Printer<'a> {
     catalog: &'a Catalog,
     current: Option<usize>,
     prompts: usize,
-    expand_children: bool,
+    recent: usize,
+    expand: bool,
 }
 
 impl Printer<'_> {
@@ -116,17 +119,22 @@ impl Printer<'_> {
         let m = &e.meta;
         let mut line = format!("{indent}{}", session_summary(e));
         if let Some(b) = &m.git_branch {
-            line += &format!("  {b}");
+            line += &format!("  {}", style::dim(b));
         }
-        if !e.children.is_empty() && !self.expand_children {
+        if !e.children.is_empty() && !self.expand {
             line += &format!("  +{} children ({})", e.children.len(), self.child_kinds(&e.children));
         }
         if self.current == Some(i) {
-            line += "  (current)";
+            line += &format!("  {}", style::bold("(current)"));
         }
         let _ = writeln!(out, "{line}");
         if let Some(t) = &m.title {
-            let _ = writeln!(out, "{indent}  \"{}\"  ({})", t.text, t.source);
+            let _ = writeln!(
+                out,
+                "{indent}  {}  {}",
+                style::bold(&format!("\"{}\"", t.text)),
+                style::dim(&format!("({})", t.source))
+            );
         }
         if let Some(f) = e.forked_from {
             let _ = writeln!(out, "{indent}  forked from {}", self.catalog.entries[f].meta.display_id());
@@ -135,9 +143,13 @@ impl Printer<'_> {
             let _ = writeln!(out, "{indent}  continued in {}:{c}", m.agent);
         }
         for p in m.first_prompts.iter().take(self.prompts) {
-            let _ = writeln!(out, "{indent}  > {p}");
+            let _ = writeln!(out, "{indent}  {} {p}", style::dim("first:"));
         }
-        if self.expand_children {
+        let recent = &m.last_prompts[m.last_prompts.len().saturating_sub(self.recent)..];
+        for p in recent {
+            let _ = writeln!(out, "{indent}  {} {p}", style::dim("last:"));
+        }
+        if self.expand {
             for &c in &e.children {
                 let child = &self.catalog.entries[c];
                 let kind = child.meta.child_kind.as_deref().unwrap_or("child");

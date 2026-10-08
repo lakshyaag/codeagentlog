@@ -8,7 +8,7 @@ use super::{Ctx, to_json};
 use crate::cache::Cache;
 use crate::model::Agent;
 use crate::text::tilde;
-use crate::time;
+use crate::{style, time};
 
 #[derive(Serialize)]
 struct AgentReport {
@@ -75,7 +75,7 @@ pub fn run(ctx: &Ctx) -> Result<String> {
     for r in &reports {
         let dirs: Vec<String> =
             r.dirs.iter().map(|(d, ok)| if *ok { d.clone() } else { format!("{d} (missing)") }).collect();
-        writeln!(out, "{}  {}", r.agent, dirs.join(", "))?;
+        writeln!(out, "{}  {}", style::agent(r.agent, r.agent.name()), style::path(&dirs.join(", ")))?;
         writeln!(
             out,
             "  files {}  sessions {}  children {}  bad lines {}  failures {}",

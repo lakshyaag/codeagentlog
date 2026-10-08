@@ -44,10 +44,10 @@ Scope v0: **pi, Codex, Claude Code** only. Cursor / OpenCode / Gemini / others l
 ```
 codeagentlog tree   [PATH] [--depth N] [--agent pi|claude|codex] [--since DUR]
 codeagentlog ls     [PATH] [--here|--under|--near|--all] [--agent X] [--since DUR]
-                    [--prompts N] [--group agent|folder|none] [--children] [--limit N]
-codeagentlog show   <ID|PATH> [--turns A..B | --tail N] [--tools brief|full|none]
-                    [--thinking] [--events] [--branch ENTRY_ID | --all-branches]
-                    [--max-chars N]          # 0 = unlimited
+                    [--prompts N] [--recent N] [--group agent|folder|none] [--children] [--limit N]
+codeagentlog show   <ID|PATH|@last[:agent]> [--turns A..B|N~K | --tail N] [--role R,..] [--chat]
+                    [--tools brief|full|none] [--thinking] [--events]
+                    [--branch ENTRY_ID | --all-branches] [--max-chars N]   # 0 = unlimited
 codeagentlog grep   <PATTERN> [PATH] [scope flags] [--agent X] [--role user|assistant|tool|event]
                     [-i] [--regex] [--events] [--context N] [--limit N]
 codeagentlog path   <ID>
@@ -55,7 +55,13 @@ codeagentlog doctor
 codeagentlog guide
 ```
 
-All commands accept `--json`.
+All commands accept `--json`, `--color auto|always|never`, `--no-pager`.
+
+- `@last[:agent]`: newest root session under cwd, excluding the caller's own.
+- `--turns N~K`: records N-K..N+K. `--tail N` counts records in the current view.
+- `show --chat`: user/assistant records with text, text blocks only (caller-chosen view).
+- Color/pager only on a TTY (`NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` honored); piped text is identical
+  to colored text minus escapes.
 
 ### Defaults
 

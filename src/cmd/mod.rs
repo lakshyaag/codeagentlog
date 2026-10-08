@@ -10,7 +10,7 @@ pub mod tree;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use jiff::Timestamp;
 use serde::Serialize;
 
@@ -18,8 +18,9 @@ use crate::Filters;
 use crate::adapters::Roots;
 use crate::catalog::{Catalog, Entry};
 use crate::model::Agent;
+use crate::scope::Scope;
 use crate::text::{shell_quote, tilde};
-use crate::time;
+use crate::{style, time};
 
 pub struct Ctx {
     pub roots: Roots,
@@ -41,6 +42,24 @@ impl Ctx {
     /// Canonical folder argument, defaulting to cwd.
     pub fn base(&self, path: Option<&Path>) -> PathBuf {
         crate::scope::canonical(path.unwrap_or(&self.cwd))
+    }
+
+    /// Resolve a session reference: `@last[:agent]`, an id prefix, or a file path.
+    pub fn resolve(&self, catalog: &Catalog, query: &str) -> Result<usize> {
+        let Some(rest) = query.strip_prefix("@last") else { return catalog.resolve(query) };
+        let agent = match rest.strip_prefix(':') {
+            Some(name) => Some(Agent::from_name(name).with_context(|| format!("unknown agent in {query:?}"))?),
+            None if rest.is_empty() => None,
+            None => bail!("unknown shortcut {query:?} (use @last or @last:<agent>)"),
+        };
+        let base = self.base(None);
+        let current = crate::current::detect(catalog, &self.cwd);
+        (0..catalog.entries.len())
+            .filter(|&i| catalog.entries[i].parent.is_none() && Some(i) != current)
+            .filter(|&i| agent.is_none_or(|a| catalog.entries[i].meta.agent == a))
+            .filter(|&i| catalog.in_scope(i, Scope::Under, &base))
+            .max_by_key(|&i| catalog.entries[i].meta.updated)
+            .with_context(|| format!("no earlier session under {} (try `codeagentlog ls --near`)", tilde(&base)))
     }
 }
 
@@ -70,15 +89,17 @@ pub fn to_json<T: Serialize>(v: &T) -> Result<String> {
     Ok(serde_json::to_string_pretty(v)? + "\n")
 }
 
-/// `<id>  <span>  N prompts  M records`
+/// `<id>  <start → end> (<age>)  N prompts  M records`
 pub fn session_summary(e: &Entry) -> String {
     let m = &e.meta;
+    let age = time::age(m.updated, Timestamp::now());
+    let age = if age == "now" { "now".to_string() } else { format!("{age} ago") };
     format!(
-        "{}  {}  {} prompts  {} records",
-        m.display_id(),
+        "{}  {} {}  {}",
+        style::agent(m.agent, &m.display_id()),
         time::span(m.started, m.updated),
-        m.prompt_count,
-        m.record_count
+        style::dim(&format!("({age})")),
+        style::dim(&format!("{} prompts  {} records", m.prompt_count, m.record_count)),
     )
 }
 
@@ -101,6 +122,8 @@ pub struct SessionJson<'a> {
     pub updated: Timestamp,
     pub prompt_count: usize,
     pub record_count: usize,
+    pub first_prompts: &'a [String],
+    pub last_prompts: &'a [String],
     pub parent: Option<String>,
     pub child_kind: Option<&'a str>,
     pub forked_from: Option<String>,
@@ -125,6 +148,8 @@ impl<'a> SessionJson<'a> {
             updated: m.updated,
             prompt_count: m.prompt_count,
             record_count: m.record_count,
+            first_prompts: &m.first_prompts,
+            last_prompts: &m.last_prompts,
             parent: m.parent_id.as_ref().map(|p| format!("{}:{p}", m.agent)),
             child_kind: m.child_kind.as_deref(),
             forked_from: e.forked_from.map(|f| catalog.entries[f].meta.display_id()).or_else(|| m.forked_from.clone()),

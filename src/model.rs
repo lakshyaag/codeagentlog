@@ -56,6 +56,8 @@ pub struct SessionMeta {
     pub prompt_count: usize,
     /// First few user messages, one-lined and truncated (for `ls --prompts`).
     pub first_prompts: Vec<String>,
+    /// Last few user messages, oldest first (for `ls --recent`).
+    pub last_prompts: Vec<String>,
     /// Native id of the parent session, for child sessions.
     pub parent_id: Option<String>,
     pub child_kind: Option<String>,
@@ -83,6 +85,7 @@ impl SessionMeta {
             record_count: 0,
             prompt_count: 0,
             first_prompts: Vec::new(),
+            last_prompts: Vec::new(),
             parent_id: None,
             child_kind: None,
             spawn_ref: None,

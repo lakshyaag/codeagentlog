@@ -59,7 +59,10 @@ fn run(args: &[&str]) -> String {
     stdout
 }
 
+/// Golden files compare text with relative ages ("(3d ago)") normalized, since they depend on now.
 fn golden(name: &str, actual: &str) {
+    let ages = regex::Regex::new(r"\((?:now|\d+(?:m|h|d|w|mo|y) ago)\)").unwrap();
+    let actual = &*ages.replace_all(actual, "(AGE)");
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden").join(format!("{name}.txt"));
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -253,4 +256,81 @@ fn cache_round_trip_matches_fresh_parse() {
     assert_eq!(first, second);
     assert_eq!(first, run(&["ls", "/work"]));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn show_chat_role_and_around() {
+    let chat = run(&["show", "claude:1111", "--chat"]);
+    assert!(chat.contains("## [2] user") && chat.contains("## [7] assistant"));
+    assert!(!chat.contains("## [3]") && !chat.contains("## [4] tool") && !chat.contains("· attachment"));
+
+    let roles = run(&["show", "pi:0199aaaa", "--role", "user,bash"]);
+    assert!(roles.contains("## [3] user") && roles.contains("## [10] bash") && !roles.contains("## [4] assistant"));
+
+    // --tail counts records in the current view, not raw records.
+    let tail = run(&["show", "claude:1111", "--chat", "--tail", "1"]);
+    assert!(tail.contains("## [7] assistant") && !tail.contains("## [2] user"));
+
+    let around = run(&["show", "pi:0199aaaa", "--turns", "4~1"]);
+    assert!(around.contains("## [3]") && around.contains("## [5]") && !around.contains("## [7]"));
+}
+
+#[test]
+fn last_shortcut_skips_current_session() {
+    // Build two pi sessions whose cwd is a real temp folder, then run from that folder.
+    let tmp = std::env::temp_dir().join(format!("codeagentlog-last-{}", std::process::id()));
+    let project = tmp.join("project");
+    let sessions = tmp.join("pi/sessions/proj");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&sessions).unwrap();
+    let project = project.canonicalize().unwrap();
+    for (id, minute) in [("older", 1), ("newer", 2)] {
+        let header = serde_json::json!({"type": "session", "id": id, "cwd": project, "timestamp": format!("2026-10-01T10:0{minute}:00Z")});
+        std::fs::write(sessions.join(format!("{id}.jsonl")), format!("{header}\n")).unwrap();
+    }
+    let path = |env: &[(&str, &str)]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_codeagentlog"));
+        cmd.current_dir(&project)
+            .env_remove("PI_SESSION_ID")
+            .env_remove("PI_SESSION_FILE")
+            .env_remove("PI_CODING_AGENT");
+        let root = |agent: &str| format!("{agent}={}", tmp.join(agent).display());
+        cmd.arg("--no-cache");
+        for agent in ["pi", "claude", "codex"] {
+            cmd.args(["--root", &root(agent)]);
+        }
+        cmd.args(["path", "@last:pi"]);
+        cmd.envs(env.iter().copied());
+        String::from_utf8(cmd.output().unwrap().stdout).unwrap()
+    };
+    assert!(path(&[]).contains("newer.jsonl"));
+    assert!(path(&[("PI_SESSION_ID", "newer")]).contains("older.jsonl"), "the current session is skipped");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn ls_recent_prompts() {
+    let out = run(&["ls", "/work/proj", "--recent", "1", "--agent", "codex"]);
+    assert!(out.contains("last: design the reward grader"));
+    assert!(!out.contains("AGENTS.md"));
+}
+
+#[test]
+fn grep_suggests_show_command_and_marks_current() {
+    let (out, _, _) =
+        run_env(&["grep", "sync", "/work"], &[("CLAUDE_CODE_SESSION_ID", "11111111-2222-4333-8444-555555555555")]);
+    assert!(out.contains("(current)"));
+    assert!(out.contains("→ codeagentlog show claude:11111111-2222-4333-8444-555555555555 --turns 2~5"));
+}
+
+#[test]
+fn grep_ignores_bookkeeping_ids() {
+    assert!(run(&["grep", "11111111-2222", "/work"]).starts_with("no matches"));
+}
+
+#[test]
+fn color_only_when_asked_or_on_a_terminal() {
+    assert!(!run(&["ls", "/work"]).contains('\x1b'), "piped output stays plain");
+    assert!(run(&["ls", "/work", "--color", "always"]).contains("\x1b["));
+    assert!(!run(&["ls", "/work", "--color", "always", "--json"]).contains('\x1b'));
 }

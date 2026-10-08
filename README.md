@@ -12,17 +12,26 @@ codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md: tells agents to use 
 ## Usage
 
 ```sh
-codeagentlog ls                      # sessions for cwd and below, newest first
-codeagentlog ls --near --prompts 2   # also parent folders; show first 2 user messages
+codeagentlog ls --recent 2                # sessions for cwd and below, newest first, with last 2 prompts
+codeagentlog ls --near --since 2d         # also parent folders, only recent sessions
+codeagentlog show @last --chat --tail 10  # where the previous session here left off
+codeagentlog grep "benchmark-variant" -i  # each hit prints the show command to open it
+codeagentlog show pi:01a11a9a --turns 57~5            # records 52..62
+codeagentlog show codex:019f --turns 40..80 --tools full --thinking --events
+codeagentlog show claude:d3d1 --role user             # only your prompts
 codeagentlog tree ~/Projects --depth 2
-codeagentlog grep "benchmark-variant" --all -i
-codeagentlog show pi:01a11a9a        # any unique id prefix, or a file path
-codeagentlog show codex:019f --turns 40..80 --tools full --thinking
-codeagentlog path claude:d3d1        # transcript file
-codeagentlog doctor                  # dirs, counts, parse errors, unknown record types
+codeagentlog path claude:d3d1             # transcript file
+codeagentlog doctor                       # dirs, counts, parse errors, unknown record types
 ```
 
+Session references: `agent:prefix`, any unique prefix, a file path, or `@last` / `@last:<agent>` (newest
+session under cwd, excluding the one you're in).
+
 All commands accept `--json`. Truncated output always ends with the exact command to continue.
+
+Output is plain text when piped (what agents see). On a terminal it's colored and paged
+(`less -FRX`); `--color always|never`, `NO_COLOR`, `FORCE_COLOR`, `--no-pager`, and
+`$CODEAGENTLOG_PAGER` / `$PAGER` adjust that.
 
 - **Records are numbered once, in file order**, across every stream and branch. Flags like
   `--events`, `--tools none`, or `--branch` hide records but never renumber, so `[N]` from

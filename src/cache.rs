@@ -9,7 +9,7 @@ use rusqlite::{Connection, params};
 use crate::model::SessionMeta;
 
 /// Bump whenever `SessionMeta` or adapter output changes.
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Stamp {

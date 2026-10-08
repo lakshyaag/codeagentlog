@@ -7,10 +7,10 @@ use jiff::Timestamp;
 use serde::Serialize;
 
 use super::{Ctx, to_json};
-use crate::TreeArgs;
 use crate::model::Agent;
 use crate::text::{home_dir, tilde};
 use crate::time;
+use crate::{TreeArgs, style};
 
 #[derive(Default, Clone, Copy, Serialize)]
 struct Count {
@@ -116,18 +116,27 @@ pub fn run(ctx: &Ctx, args: TreeArgs) -> Result<String> {
     let now = Timestamp::now();
     let width = rows.iter().map(|r| r.label.chars().count()).max().unwrap_or(0) + 2;
     let mut out = String::new();
-    let head: String = agents.iter().map(|a| format!("{:>8}", a.name())).collect();
-    writeln!(out, "{:width$}{head}{:>7}", "", "last")?;
-    for r in &rows {
-        let cols: String =
-            agents.iter().map(|a| format!("{:>8}", r.counts.get(a).map_or("·".into(), |c| c.label()))).collect();
+    let head: String = agents.iter().map(|a| style::agent(*a, &format!("{:>8}", a.name()))).collect();
+    writeln!(out, "{:width$}{head}{}", "", style::dim(&format!("{:>7}", "last")))?;
+    for (n, r) in rows.iter().enumerate() {
+        let label = format!("{:width$}", r.label);
+        let label = if n == 0 { style::bold(&label) } else { label };
+        let cols: String = agents
+            .iter()
+            .map(|a| match r.counts.get(a) {
+                Some(c) => format!("{:>8}", c.label()),
+                None => style::dim(&format!("{:>8}", "·")),
+            })
+            .collect();
         let last = r.last.map(|t| time::age(t, now)).unwrap_or_default();
-        writeln!(out, "{:width$}{cols}{last:>7}", r.label)?;
+        writeln!(out, "{label}{cols}{}", style::dim(&format!("{last:>7}")))?;
     }
-    if outside > 0 {
-        writeln!(out, "\n-- {outside} sessions outside {}. see: codeagentlog tree /", tilde(&base))?;
+    if outside > 0 && args.path.is_none() {
+        let note = format!("{outside} sessions outside {}. see:", tilde(&base));
+        writeln!(out, "\n{}", style::footer(&note, Some("codeagentlog tree /")))?;
     }
-    writeln!(out, "-- counts are root sessions (+children). list one: codeagentlog ls <folder> --here")?;
+    let note = "counts are root sessions (+children). list one:";
+    writeln!(out, "{}", style::footer(note, Some("codeagentlog ls <folder> --here")))?;
     Ok(out)
 }
 

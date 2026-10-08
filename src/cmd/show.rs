@@ -5,13 +5,12 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use super::{Ctx, to_json};
-use crate::ShowArgs;
 use crate::branches::Branches;
 use crate::catalog::Catalog;
-use crate::model::{Session, Turn};
+use crate::model::{Role, Session, Turn};
 use crate::render::{Renderer, ToolsMode};
 use crate::text::{tilde, truncate};
-use crate::time;
+use crate::{ShowArgs, style, time};
 
 /// Inclusive record range; open ends are `None`.
 #[derive(Clone, Copy, Default)]
@@ -21,18 +20,18 @@ pub struct Range {
 }
 
 impl Range {
+    /// `A..B`, `A..`, `..B`, `N`, or `N~K` (N-K..N+K).
     pub fn parse(s: &str) -> Result<Range> {
-        let num = |p: &str| -> Result<Option<usize>> {
-            if p.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(p.trim().parse().with_context(|| format!("invalid --turns {s:?}"))?))
-            }
-        };
+        let num = |p: &str| -> Result<usize> { p.trim().parse().with_context(|| format!("invalid --turns {s:?}")) };
+        let opt = |p: &str| -> Result<Option<usize>> { if p.is_empty() { Ok(None) } else { num(p).map(Some) } };
+        if let Some((center, radius)) = s.split_once('~') {
+            let (c, r) = (num(center)?, num(radius)?);
+            return Ok(Range { start: Some(c.saturating_sub(r).max(1)), end: Some(c + r) });
+        }
         match s.split_once("..") {
-            Some((a, b)) => Ok(Range { start: num(a)?, end: num(b.trim_start_matches('='))? }),
+            Some((a, b)) => Ok(Range { start: opt(a)?, end: opt(b.trim_start_matches('='))? }),
             None => {
-                let n = num(s)?;
+                let n = Some(num(s)?);
                 Ok(Range { start: n, end: n })
             }
         }
@@ -49,7 +48,20 @@ pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
     let branches = Branches::of(&session.turns);
     let branch_path = select_branch(branches.as_ref(), &args)?;
     let range = args.turns.as_deref().map(Range::parse).transpose()?.unwrap_or_default();
+    let roles: Vec<Role> = args
+        .role
+        .iter()
+        .map(|r| Role::parse(r).with_context(|| format!("unknown role {r:?}")))
+        .collect::<Result<_>>()?;
 
+    let spawns = spawn_links(&catalog, entry);
+    let renderer = Renderer {
+        tools: args.tools,
+        thinking: args.thinking,
+        chat: args.chat,
+        spawns: &spawns,
+        start_date: time::date(session.meta.started),
+    };
     let mut visible: Vec<&Turn> = session
         .turns
         .iter()
@@ -58,17 +70,18 @@ pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
             (Some(path), Some(node)) => path.contains(&node.id),
             _ => true,
         })
-        .filter(|t| range.contains(t.idx))
+        .filter(|t| range.contains(t.idx) && (roles.is_empty() || roles.contains(&t.role)))
+        .filter(|t| !renderer.omits(t))
         .collect();
     if let Some(n) = args.tail {
         visible = visible.split_off(visible.len().saturating_sub(n));
     }
 
     let id = session.meta.display_id();
-    let page = paginate(&session, &visible, &args, &catalog, entry);
+    let page = paginate(&renderer, &session, &visible, &args);
+    let next = page.next.map(|n| next_command(&id, &args, n, range.end));
 
     if ctx.json {
-        let next = page.next.map(|n| next_command(&id, &args, n, range.end));
         let turns: Vec<&Turn> = visible.iter().copied().filter(|t| page.shown.contains(&t.idx)).collect();
         return to_json(&serde_json::json!({
             "session": entry.map(|i| super::SessionJson::new(&catalog, i, None)),
@@ -84,14 +97,8 @@ pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
     if visible.is_empty() {
         out.push_str("(no records in this selection)\n");
     }
-    if let Some(next) = page.next {
-        let total = session.turns.len();
-        writeln!(
-            out,
-            "\n-- truncated at {} chars (record {next}/{total}). next: {}",
-            args.max_chars,
-            next_command(&id, &args, next, range.end)
-        )?;
+    if let (Some(n), Some(next)) = (page.next, &next) {
+        writeln!(out, "\n-- truncated at {} chars (record {n}/{}). next: {next}", args.max_chars, session.turns.len())?;
     }
     if let Some(b) = &branches
         && !b.other_leaves().is_empty()
@@ -101,13 +108,13 @@ pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
         let more = if b.other_leaves().len() > 5 { " …" } else { "" };
         writeln!(out, "-- {} other branches: {}{more} | --all-branches", b.other_leaves().len(), shown.join(" "))?;
     }
-    Ok(out)
+    Ok(style::transcript(&out))
 }
 
-/// Load by id (via the catalog) or by file path (even outside known roots).
+/// Load by reference (via the catalog) or by file path (even outside known roots).
 fn load(ctx: &Ctx, catalog: &Catalog, query: &str) -> Result<(Session, Option<usize>)> {
     let path = Path::new(query);
-    let entry = match catalog.resolve(query) {
+    let entry = match ctx.resolve(catalog, query) {
         Ok(i) => Some(i),
         Err(_) if path.is_file() => None,
         Err(e) => return Err(e),
@@ -155,14 +162,7 @@ struct Page {
     next: Option<usize>,
 }
 
-fn paginate(session: &Session, visible: &[&Turn], args: &ShowArgs, catalog: &Catalog, entry: Option<usize>) -> Page {
-    let spawns = spawn_links(catalog, entry);
-    let renderer = Renderer {
-        tools: args.tools,
-        thinking: args.thinking,
-        spawns: &spawns,
-        start_date: time::date(session.meta.started),
-    };
+fn paginate(renderer: &Renderer, session: &Session, visible: &[&Turn], args: &ShowArgs) -> Page {
     let positions: HashMap<&str, usize> =
         session.turns.iter().filter_map(|t| Some((t.node.as_ref()?.id.as_str(), t.idx))).collect();
     let id = session.meta.display_id();
@@ -179,8 +179,7 @@ fn paginate(session: &Session, visible: &[&Turn], args: &ShowArgs, catalog: &Cat
         let room = budget.saturating_sub(used);
         // An oversized record is cut in place (here if there's useful room left,
         // otherwise at the top of the next page), so paging never loops.
-        let cut = len > budget && (used == 0 || room >= MIN_CUT);
-        if cut {
+        if len > budget && (used == 0 || room >= MIN_CUT) {
             let keep = room.min(budget);
             text = format!(
                 "{}\n  … {} chars omitted; full: codeagentlog show {id} --turns {} --tools full --max-chars 0{}\n",
@@ -227,13 +226,8 @@ fn header(session: &Session, catalog: &Catalog, entry: Option<usize>) -> String 
     let branch = m.git_branch.as_ref().map(|b| format!(" · {b}")).unwrap_or_default();
     let _ = writeln!(out, "# {} · {cwd}{branch}", m.display_id());
     let model = m.model.as_ref().map(|x| format!(" · model {x}")).unwrap_or_default();
-    let _ = writeln!(
-        out,
-        "# {} · {} prompts · {} records{model}",
-        time::span(m.started, m.updated),
-        m.prompt_count,
-        m.record_count
-    );
+    let span = time::span(m.started, m.updated);
+    let _ = writeln!(out, "# {span} · {} prompts · {} records{model}", m.prompt_count, m.record_count);
     if let Some(t) = &m.title {
         let _ = writeln!(out, "# title \"{}\" ({})", t.text, t.source);
     }
@@ -251,9 +245,9 @@ fn header(session: &Session, catalog: &Catalog, entry: Option<usize>) -> String 
             let _ = writeln!(out, "# children ({}):", e.children.len());
             for &c in e.children.iter().take(10) {
                 let cm = &catalog.entries[c].meta;
+                let kind = cm.child_kind.as_deref().unwrap_or("child");
                 let title = cm.title.as_ref().map(|t| format!(": \"{}\"", truncate(&t.text, 80))).unwrap_or_default();
-                let _ =
-                    writeln!(out, "#   {} ({}{title})", cm.display_id(), cm.child_kind.as_deref().unwrap_or("child"));
+                let _ = writeln!(out, "#   {} ({kind}{title})", cm.display_id());
             }
             if e.children.len() > 10 {
                 let _ = writeln!(out, "#   … +{} more: codeagentlog ls --all --children --json", e.children.len() - 10);
@@ -269,12 +263,19 @@ fn header(session: &Session, catalog: &Catalog, entry: Option<usize>) -> String 
 /// The exact command that continues from record `next`, preserving flags.
 fn next_command(id: &str, args: &ShowArgs, next: usize, end: Option<usize>) -> String {
     let mut cmd = format!("codeagentlog show {id} --turns {next}..{}", end.map(|e| e.to_string()).unwrap_or_default());
+    if !args.role.is_empty() {
+        cmd += &format!(" --role {}", args.role.join(","));
+    }
     if args.tools != ToolsMode::Brief {
         cmd += &format!(" --tools {}", if args.tools == ToolsMode::Full { "full" } else { "none" });
     }
-    for (on, flag) in
-        [(args.thinking, " --thinking"), (args.events, " --events"), (args.all_branches, " --all-branches")]
-    {
+    let flags = [
+        (args.chat, " --chat"),
+        (args.thinking, " --thinking"),
+        (args.events, " --events"),
+        (args.all_branches, " --all-branches"),
+    ];
+    for (on, flag) in flags {
         if on {
             cmd += flag;
         }
@@ -300,6 +301,9 @@ mod tests {
         assert!(!Range::parse("..5").unwrap().contains(6));
         let one = Range::parse("4").unwrap();
         assert!(one.contains(4) && !one.contains(5));
+        let around = Range::parse("10~3").unwrap();
+        assert_eq!((around.start, around.end), (Some(7), Some(13)));
+        assert_eq!(Range::parse("2~5").unwrap().start, Some(1));
         assert!(Range::parse("x..").is_err());
     }
 }

@@ -1,5 +1,6 @@
 claude:11111111-2222-4333-8444-555555555555/abc123  /work/proj  2026-10-02  1 prompts  2 records  child of claude:11111111-2222-4333-8444-555555555555
   [2] assistant: Datasets look fine: walrus-free.
+  → codeagentlog show claude:11111111-2222-4333-8444-555555555555/abc123 --turns 2~5
 
 pi:0199aaaa-0000-7000-8000-000000000001  /work/proj  2026-10-01  1 prompts  10 records
   [6] assistant: Abandoned branch about walruses.

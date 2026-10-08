@@ -133,6 +133,8 @@ fn finalize(session: &mut Session, bad_lines: usize) {
         .collect();
     meta.prompt_count = prompts.len();
     meta.first_prompts = prompts.iter().take(PROMPTS_KEPT).map(|p| text::snippet(p, 200)).collect();
+    meta.last_prompts =
+        prompts[prompts.len().saturating_sub(PROMPTS_KEPT)..].iter().map(|p| text::snippet(p, 200)).collect();
     if meta.title.is_none()
         && let Some(first) = prompts.iter().find(|p| !p.trim().is_empty())
     {

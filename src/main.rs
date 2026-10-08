@@ -9,10 +9,10 @@ mod current;
 mod model;
 mod render;
 mod scope;
+mod style;
 mod text;
 mod time;
 
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -21,12 +21,26 @@ use clap::{Args, Parser, Subcommand};
 use crate::model::Agent;
 use crate::render::ToolsMode;
 use crate::scope::Scope;
+use crate::style::ColorChoice;
+
+const WORKFLOW: &str = "\
+Workflow:
+  codeagentlog ls                          sessions for this folder (newest first; --near/--all to widen)
+  codeagentlog show @last --chat --tail 10 where the previous session left off
+  codeagentlog grep <keyword>              find the session/record; each hit prints a show command
+  codeagentlog show <id> --turns 57~5      records 52..62 around a hit
+  codeagentlog tree                        which folders have sessions
+
+Session ids: `agent:prefix` (e.g. pi:01a1), any unique prefix, a file path,
+or @last / @last:<agent> (newest session here, excluding the current one).
+Truncated output always ends with the exact command to continue.";
 
 #[derive(Parser)]
 #[command(
     name = "codeagentlog",
     version,
-    about = "Find and read past coding-agent conversations (pi, Claude Code, Codex)."
+    about = "Find and read past coding-agent conversations (pi, Claude Code, Codex).",
+    after_help = WORKFLOW
 )]
 struct Cli {
     #[command(subcommand)]
@@ -35,6 +49,14 @@ struct Cli {
     /// Output JSON instead of text.
     #[arg(long, global = true)]
     json: bool,
+
+    /// Color output (auto: only on a terminal, honoring NO_COLOR).
+    #[arg(long, global = true, value_enum, default_value = "auto")]
+    color: ColorChoice,
+
+    /// Don't page long output on a terminal.
+    #[arg(long, global = true)]
+    no_pager: bool,
 
     /// Override an agent's data dir, e.g. `--root codex=/tmp/codex-home`. Repeatable.
     #[arg(long = "root", global = true, value_name = "AGENT=PATH")]
@@ -49,15 +71,24 @@ struct Cli {
 enum Command {
     /// Folder tree with per-agent session counts.
     Tree(TreeArgs),
-    /// List sessions for a folder (default: cwd and below).
+    /// List sessions for a folder (default: cwd and below), newest first.
+    #[command(
+        after_help = "Examples:\n  codeagentlog ls --recent 2\n  codeagentlog ls --near --since 2d\n  codeagentlog ls --all --agent claude --limit 50"
+    )]
     Ls(LsArgs),
     /// Print a session transcript.
+    #[command(
+        after_help = "Examples:\n  codeagentlog show @last --chat --tail 10\n  codeagentlog show pi:01a1 --turns 40..80 --tools full\n  codeagentlog show codex:019f --turns 57~5 --thinking --events"
+    )]
     Show(ShowArgs),
     /// Search transcripts (rendered text, not raw JSON).
+    #[command(
+        after_help = "Examples:\n  codeagentlog grep 'benchmark-variant' -i\n  codeagentlog grep 'k8s sync' --all --role user,assistant\n  codeagentlog grep 'reward (model|grader)' --regex --since 1w"
+    )]
     Grep(GrepArgs),
     /// Print the transcript file path of a session.
     Path {
-        /// Session id (`agent:prefix` or unique prefix).
+        /// Session id (`agent:prefix`, unique prefix, or @last[:agent]).
         id: String,
     },
     /// Per-agent health: dirs, counts, parse errors, unknown record types.
@@ -134,6 +165,9 @@ pub struct LsArgs {
     /// Also print the first N user messages of each session.
     #[arg(long, default_value_t = 0, value_name = "N")]
     prompts: usize,
+    /// Also print the last N user messages of each session (where it left off).
+    #[arg(long, default_value_t = 0, value_name = "N")]
+    recent: usize,
     #[arg(long, value_enum, default_value = "agent")]
     group: Group,
     /// Expand child sessions (subagents, reviewers) under their parent.
@@ -146,14 +180,20 @@ pub struct LsArgs {
 
 #[derive(Args)]
 pub struct ShowArgs {
-    /// Session id (`agent:prefix` or unique prefix) or transcript file path.
+    /// Session id (`agent:prefix`, unique prefix, @last[:agent]) or transcript file path.
     id: String,
-    /// Record range: `A..B`, `A..`, `..B`, or `N` (inclusive).
+    /// Record range: `A..B`, `A..`, `..B`, `N`, or `N~K` (N±K). Inclusive.
     #[arg(long, value_name = "A..B", conflicts_with = "tail")]
     turns: Option<String>,
-    /// Only the last N visible records.
+    /// Only the last N records of this view.
     #[arg(long, value_name = "N")]
     tail: Option<usize>,
+    /// Only these roles: user, assistant, tool, event, system, developer, bash, custom:<type>.
+    #[arg(long, value_delimiter = ',')]
+    role: Vec<String>,
+    /// Conversation only: user and assistant text (no tools, thinking, or events).
+    #[arg(long)]
+    chat: bool,
     #[arg(long, value_enum, default_value = "brief")]
     tools: ToolsMode,
     /// Show thinking / reasoning text.
@@ -204,6 +244,9 @@ pub struct GrepArgs {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    style::init(if cli.json { ColorChoice::Never } else { cli.color });
+    let paged =
+        !cli.json && !cli.no_pager && matches!(cli.command, Command::Show(_) | Command::Grep(_) | Command::Ls(_));
     let result = cmd::Ctx::new(&cli.roots, cli.json, !cli.no_cache).and_then(|ctx| match cli.command {
         Command::Tree(a) => cmd::tree::run(&ctx, a),
         Command::Ls(a) => cmd::ls::run(&ctx, a),
@@ -215,13 +258,11 @@ fn main() -> ExitCode {
     });
     match result {
         Ok(out) => {
-            let mut stdout = std::io::stdout().lock();
-            // Ignore broken pipes (`| head`).
-            let _ = stdout.write_all(out.as_bytes()).and_then(|_| stdout.flush());
+            style::emit(&out, paged);
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("codeagentlog: {e:#}");
+            eprintln!("codeagentlog {} {e:#}", style::error_label());
             ExitCode::FAILURE
         }
     }
