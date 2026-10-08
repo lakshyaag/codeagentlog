@@ -1,0 +1,40 @@
+# claude:11111111-2222-4333-8444-555555555555 · /work/proj · main
+# 2026-10-02 09:00 → 09:00 · 1 prompts · 9 records · model claude-opus-test
+# title "Dataset sync flow" (ai-title)
+# file ~/claude/projects/-work-proj/11111111-2222-4333-8444-555555555555.jsonl
+# children (1):
+#   claude:11111111-2222-4333-8444-555555555555/abc123 (general-purpose: "Inspect datasets")
+
+## [1] event
+· permission-mode: {"permissionMode":"default"}
+
+## [2] user · 09:00:00
+find the dataset sync flow
+
+## [3] assistant · 09:00:01
+[reasoning, encrypted]
+  → Bash {"command":"ls"}
+  → Agent {"description":"Inspect datasets","prompt":"look"}
+  → child claude:11111111-2222-4333-8444-555555555555/abc123
+
+## [4] tool · Bash · ok · 09:00:03
+  ← 2 lines, 11 chars
+    x.csv
+    y.csv
+
+## [5] tool · Agent · 09:00:04
+  ← 1 lines, 20 chars
+    Async agent launched
+
+## [6] event · 09:00:05
+· attachment: environment: <system-reminder>env info</system-reminder>
+
+## [7] assistant · 09:00:06
+The sync flow lives in sync.py.
+
+## [8] event
+· ai-title: Dataset sync flow
+
+## [9] system · 09:00:07
+AGENTS.md loaded
+

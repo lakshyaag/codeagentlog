@@ -1,0 +1,5 @@
+                 pi  claude   codex
+/work             ·       ·       ·
+└─ proj           1     1+1       ·
+   └─ sub         ·       ·     1+1
+-- counts are root sessions (+children). list one: codeagentlog ls <folder> --here

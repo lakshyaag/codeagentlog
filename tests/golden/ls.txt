@@ -1,0 +1,16 @@
+pi
+  /work/proj
+    pi:0199aaaa-0000-7000-8000-000000000001  2026-10-01 10:00 → 10:00  1 prompts  10 records
+      "Benchmark variant planning"  (session_info)
+      > plan the benchmark-variant service
+claude
+  /work/proj
+    claude:11111111-2222-4333-8444-555555555555  2026-10-02 09:00 → 09:00  1 prompts  9 records  main  +1 children (general-purpose×1)
+      "Dataset sync flow"  (ai-title)
+      > find the dataset sync flow
+codex
+  /work/proj/sub
+    codex:0199cccc-0000-7000-8000-000000000001  2026-10-03 08:00 → 08:00  2 prompts  11 records  +1 children (guardian×1)
+      "Reward grader design"  (thread_name)
+      > # AGENTS.md instructions be nice
+      > design the reward grader

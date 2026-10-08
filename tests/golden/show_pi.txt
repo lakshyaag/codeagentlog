@@ -1,0 +1,39 @@
+# pi:0199aaaa-0000-7000-8000-000000000001 · /work/proj
+# 2026-10-01 10:00 → 10:00 · 1 prompts · 10 records · model claude-test
+# title "Benchmark variant planning" (session_info)
+# file ~/pi/sessions/--work-proj--/2026-10-01T10-00-00-000Z_0199aaaa-0000-7000-8000-000000000001.jsonl
+
+## [1] event · 10:00:00
+· session: pi session v3
+
+## [2] event · 10:00:00
+· model_change: anthropic/claude-test
+
+## [3] user · 10:00:01
+plan the benchmark-variant service
+
+## [4] assistant · 10:00:02
+[thinking, 24 chars]
+Let me look.
+  → bash {"command":"ls"}
+
+## [5] tool · bash · ok · 10:00:03
+  ← 2 lines, 11 chars
+    a.txt
+    b.txt
+
+## [7] assistant · 10:00:05
+Two files found.
+
+## [8] event · 10:00:06
+· session_info: Benchmark variant planning
+
+## [9] event · 10:00:07
+· mystery_record: {"foo":"bar"}
+
+## [10] bash · 10:00:08
+  → bash {"command":"git status"}
+  ← 1 lines, 5 chars
+    clean
+
+-- 1 other branches: --branch e5 | --all-branches
