@@ -11,7 +11,7 @@ Across ~40 sessions I've had to manually prompt agents with things like:
 - "can you see the previous conversation i was having yesterday. what plan did we agree on"
 - "see the other pi sessions in this folder. hone in on the session where we talk about …benchmark-variant…"
 - "can you find the conversations i had with claude code for this folder?"
-- "see @~/.pi/agent/sessions/--Users-…-tavily-benchmarks--/ for the other session …"
+- "see @~/.pi/agent/sessions/--Users-…-eval-benchmarks--/ for the other session …"
 
 Every time, the agent re-discovers storage layouts and writes throwaway `jq`/`rg` parsers over
 multi-MB JSONL files full of tool output. An earlier pi-only `/attach` extension was abandoned
@@ -87,7 +87,7 @@ All commands accept `--json`, `--color auto|always|never`, `--no-pager`.
 
 - `--here` — sessions whose cwd == PATH
 - `--under` — cwd == PATH or descendant (default)
-- `--near` — `--under` plus ancestors of PATH (e.g. `sft-tavily` also sees `tavily-post-training`)
+- `--near` — `--under` plus ancestors of PATH (e.g. `sft-eval` also sees `post-training`)
 - `--all` — everything
 
 Path canonicalization: resolve symlinks, strip `/System/Volumes/Data` prefix, strip trailing `/`.
@@ -127,11 +127,11 @@ Detection order:
 ### `tree`
 
 ```
-~/Projects/Work                                    pi  claude  codex   last
-├─ tavily-post-training                             3       0      2   2d
-│  ├─ sft-tavily                                   12       4      6   now
-│  └─ tavily-teacher-distillation                  18       9      3   1d
-├─ tavily-benchmarks                               41       3     12   4d
+~/Projects                                         pi  claude  codex   last
+├─ post-training                                    3       0      2   2d
+│  ├─ sft-eval                                     12       4      6   now
+│  └─ teacher-distillation                         18       9      3   1d
+├─ eval-benchmarks                                 41       3     12   4d
 └─ gtm-agent-v2                                     9       0      0   3w
 ```
 Counts are root sessions; child count shown as `+N` suffix if any (e.g. `6+31`).
@@ -140,16 +140,16 @@ Counts are root sessions; child count shown as `+N` suffix if any (e.g. `6+31`).
 
 ```
 pi
-  ~/Projects/Work/tavily-post-training/sft-tavily
+  ~/Projects/post-training/sft-eval
     pi:01a11a9a-5f59-71aa-82e2-71538deca7f8  2026-10-08 08:21 → 09:40  12 prompts  412 records  (current)
       "i have had multiple cases where i have had to manually prompt…"   (first-user)
       forked from pi:01a1166d-d52c-7776-bf84-bc8a7de1ecd7
 claude
-  ~/Projects/Work/tavily-post-training/sft-tavily
+  ~/Projects/post-training/sft-eval
     claude:d3d1cb7b-…  2026-10-07 12:45 → 14:02  9 prompts  188 records  main
       "Dataset and k8s sync flow"                                         (ai-title)
 codex
-  ~/Projects/Work/tavily-post-training/sft-tavily
+  ~/Projects/post-training/sft-eval
     codex:019ff0bf-…  2026-10-05 10:02 → 11:15  7 prompts  264 records  +12 children (guardian×10, subagent×2)
       "Reward design for simpleqa grader"                                 (thread_name)
 
@@ -167,9 +167,9 @@ codex
 ### `show`
 
 ```
-# claude:d3d1cb7b-5e0c-4c8a-9a51-0f2b7d3c1e44 · ~/Projects/Work/tavily-post-training/sft-tavily · main
+# claude:d3d1cb7b-5e0c-4c8a-9a51-0f2b7d3c1e44 · ~/Projects/post-training/sft-eval · main
 # 2026-10-07 12:45 → 14:02 · 9 prompts · 88 records · model claude-sonnet-… (latest; changes listed inline)
-# file ~/.claude/projects/-Users-…-sft-tavily/d3d1cb7b-….jsonl
+# file ~/.claude/projects/-Users-…-sft-eval/d3d1cb7b-….jsonl
 # children: claude:d3d1cb7b-…/a7d1314a… (general-purpose: "Verify Weak RL papers batch 1")
 
 ## [1] user · 12:45:25
@@ -222,9 +222,9 @@ Rules:
 ### `grep`
 
 ```
-pi:01a0f3c2-…  ~/Projects/Work/tavily-benchmarks  2026-08-28  6 prompts  141 records
+pi:01a0f3c2-…  ~/Projects/eval-benchmarks  2026-08-28  6 prompts  141 records
   [12] user: …hone in on the session where we talk about getting a benchmark-variant service…
-  [15] assistant: …the benchmark-variant service would mirror tavily-search-eval-variant…
+  [15] assistant: …the benchmark-variant service would mirror search-eval-variant…
 codex:01a1062c  …
 ```
 - Grouped by session, most recent first; each hit shows turn number + role + snippet.
@@ -417,7 +417,7 @@ Record types observed (counts across all files):
 - **grep:** stage 1 = parallel raw-byte prefilter (`memchr::memmem`, case-folded for `-i`; `regex`
   bytes for `--regex`) over all in-scope files with `rayon`. Stage 2 = full parse only of hit files,
   match against rendered turn text.
-- Target: `ls`/`tree` < 100ms warm; `grep` over ~1.6GB < 2s cold-ish on this laptop.
+- Target: `ls`/`tree` < 100ms warm; `grep` over ~1.6GB < 2s cold-ish on a laptop.
 
 ## Crates
 
@@ -429,6 +429,7 @@ Record types observed (counts across all files):
 ```
 codeagentlog/
   Cargo.toml
+  docs/SPEC.md                this design
   src/main.rs                 clap wiring
   src/model.rs                Agent, SessionMeta, Turn, Block, Role, SessionRef
   src/scope.rs                canonicalize, here/under/near/all
@@ -437,7 +438,7 @@ codeagentlog/
   src/render/{text,json}.rs   tree/ls/show/grep renderers, truncation + footers
   src/cmd/{tree,ls,show,grep,path,doctor,guide}.rs
   src/adapters/{mod,pi,claude,codex}.rs
-  tests/fixtures/{pi,claude,codex}/*.jsonl   small trimmed real samples (scrub secrets)
+  tests/fixtures/{pi,claude,codex}/*.jsonl   small synthetic samples
   tests/*.rs                  golden-output tests per adapter + per command
 ```
 
@@ -459,4 +460,3 @@ Status: v0.1–v0.3 implemented (all commands, cache, child linking, `--json`, g
 - Decide whether `tree` counts should include children by default (current plan: `roots+children`).
 - Claude `parentUuid` branches (rewind/edit): v0 renders file order linearly; revisit if confusing.
 - Confirm what pi writes `parentSession` for (fork vs other).
-- Secret hygiene for fixtures (scrub tokens/keys before committing).

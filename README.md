@@ -4,10 +4,31 @@ A small, read-only CLI for finding and reading past **pi**, **Claude Code**, and
 conversations, organized by folder and agent. Built so coding agents (and humans) stop writing
 throwaway `jq` parsers over multi-MB session logs.
 
+## Install
+
+Requires **Rust 1.85+** ([rustup](https://rustup.rs)).
+
+From a clone of this repo:
+
 ```sh
-cargo install --path .
-codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md: tells agents to use it
+cargo install --path . --locked
 ```
+
+Once the GitHub remote exists, the same build can be installed without a local checkout:
+
+```sh
+cargo install --git https://github.com/<you>/codeagentlog --locked
+```
+
+`--locked` uses the committed `Cargo.lock` so the dependency set matches CI. Then tell
+agents how to use it:
+
+```sh
+codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md
+```
+
+This crate is not on crates.io yet, so `cargo install codeagentlog` will not work until it
+is published there.
 
 ## Usage
 
@@ -68,4 +89,8 @@ UPDATE_GOLDEN=1 cargo test      # regenerate tests/golden/*.txt after intended o
 
 Layout: `src/adapters/` parses each agent's format into the shared model (`src/model.rs`);
 `src/catalog.rs` discovers, caches, and links sessions; `src/render.rs` turns records into text;
-`src/cmd/` holds one file per command. See `SPEC.md` for the design.
+`src/cmd/` holds one file per command. See [docs/SPEC.md](docs/SPEC.md) for the design.
+
+## License
+
+MIT.
