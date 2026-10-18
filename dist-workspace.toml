@@ -16,4 +16,6 @@ install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
 # Printed by the shell and powershell installers when they finish.
-install-success-msg = "Installed. Next: `codeagentlog setup` adds the skill for your agents (lists files first, asks before writing)."
+# No backticks/$ here: the shell installer wraps this in double quotes (command
+# substitution) and PowerShell treats backticks as escapes.
+install-success-msg = "Installed. Next: run codeagentlog setup to add the skill for your agents (it lists the files and asks before writing)."
