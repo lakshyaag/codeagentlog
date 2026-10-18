@@ -1,4 +1,4 @@
-//! codeagentlog: find and read past pi / Claude Code / Codex conversations.
+//! codeagentlog: find and read past pi / Claude Code / Codex / Cursor conversations.
 
 mod adapters;
 mod branches;
@@ -39,7 +39,7 @@ Truncated output always ends with the exact command to continue.";
 #[command(
     name = "codeagentlog",
     version,
-    about = "Find and read past coding-agent conversations (pi, Claude Code, Codex).",
+    about = "Find and read past coding-agent conversations (pi, Claude Code, Codex, Cursor).",
     after_help = WORKFLOW
 )]
 struct Cli {
@@ -78,7 +78,7 @@ enum Command {
     Ls(LsArgs),
     /// Print a session transcript.
     #[command(
-        after_help = "Examples:\n  codeagentlog show @last --chat --tail 10\n  codeagentlog show pi:01a1 --turns 40..80 --tools full\n  codeagentlog show codex:019f --turns 57~5 --thinking --events"
+        after_help = "Examples:\n  codeagentlog show @last --chat --tail 10\n  codeagentlog show pi:01a1 --turns 40..80 --tools full\n  codeagentlog show codex:019f --turns 57~5 --thinking --events\n  codeagentlog show cursor:6089 --db --tools full"
     )]
     Show(ShowArgs),
     /// Search transcripts (rendered text, not raw JSON).
@@ -208,6 +208,10 @@ pub struct ShowArgs {
     /// Show records from every branch, in file order (pi).
     #[arg(long)]
     all_branches: bool,
+    /// Cursor only: read the conversation from Cursor's database instead of the transcript,
+    /// adding timestamps, thinking and tool results. Records are numbered in database order.
+    #[arg(long, conflicts_with_all = ["branch", "all_branches"])]
+    db: bool,
     /// Output budget in chars; 0 = unlimited.
     #[arg(long, default_value_t = 20000)]
     max_chars: usize,

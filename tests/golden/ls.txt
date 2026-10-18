@@ -14,3 +14,9 @@ codex
       "Reward grader design"  (thread_name)
       first: # AGENTS.md instructions be nice
       first: design the reward grader
+cursor
+  /work/proj
+    cursor:0199dddd-0000-7000-8000-000000000001  2026-10-01 10:00 → 10:30 (AGE)  2 prompts  7 records  +1 children (subagent×1)
+      "why does the otter parser drop the last line?"  (first-user)
+      first: why does the otter parser drop the last line?
+      first: <attached_files>src/otter.rs</attached_files> add a test for it

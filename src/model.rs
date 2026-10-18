@@ -14,16 +14,18 @@ pub enum Agent {
     Pi,
     Claude,
     Codex,
+    Cursor,
 }
 
 impl Agent {
-    pub const ALL: [Agent; 3] = [Agent::Pi, Agent::Claude, Agent::Codex];
+    pub const ALL: [Agent; 4] = [Agent::Pi, Agent::Claude, Agent::Codex, Agent::Cursor];
 
     pub fn name(self) -> &'static str {
         match self {
             Agent::Pi => "pi",
             Agent::Claude => "claude",
             Agent::Codex => "codex",
+            Agent::Cursor => "cursor",
         }
     }
 
@@ -118,7 +120,7 @@ impl SessionMeta {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Title {
     pub text: String,
-    /// Where the title came from: `ai-title`, `thread_name`, `session_info`, `first-user`, …
+    /// Where the title came from: `ai-title`, `thread_name`, `session_info`, `cursor-db`, `first-user`, …
     pub source: String,
 }
 

@@ -66,6 +66,7 @@ pub fn agent(a: Agent, s: &str) -> String {
             Agent::Pi => "1;35",
             Agent::Claude => "1;33",
             Agent::Codex => "1;36",
+            Agent::Cursor => "1;34",
         },
     )
 }

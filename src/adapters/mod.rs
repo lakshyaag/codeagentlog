@@ -4,6 +4,8 @@
 
 mod claude;
 mod codex;
+mod cursor;
+pub mod cursor_db;
 mod pi;
 
 use std::collections::BTreeMap;
@@ -43,6 +45,7 @@ impl Roots {
             (Agent::Pi, env_or("PI_CODING_AGENT_DIR", ".pi/agent")),
             (Agent::Claude, env_or("CLAUDE_CONFIG_DIR", ".claude")),
             (Agent::Codex, env_or("CODEX_HOME", ".codex")),
+            (Agent::Cursor, home.join(".cursor")),
         ]);
         for o in overrides {
             let Some((name, path)) = o.split_once('=') else {
@@ -60,6 +63,7 @@ impl Roots {
             Agent::Pi => Box::new(pi::Pi { home }),
             Agent::Claude => Box::new(claude::Claude { home }),
             Agent::Codex => Box::new(codex::Codex { home }),
+            Agent::Cursor => Box::new(cursor::Cursor { home }),
         }
     }
 
@@ -79,6 +83,8 @@ fn sniff(path: &Path) -> Agent {
     match first.as_ref().and_then(|v| text::str_field(v, "type")) {
         Some("session") => Agent::Pi,
         Some("session_meta" | "response_item" | "event_msg" | "turn_context") => Agent::Codex,
+        Some("turn_ended") => Agent::Cursor,
+        None if first.as_ref().is_some_and(|v| v.get("role").is_some()) => Agent::Cursor,
         _ => Agent::Claude,
     }
 }

@@ -9,8 +9,12 @@ use crate::model::Agent;
 use crate::scope;
 
 /// Env vars agents expose to child shells.
-const ID_VARS: &[(&str, Agent)] =
-    &[("PI_SESSION_ID", Agent::Pi), ("CLAUDE_CODE_SESSION_ID", Agent::Claude), ("CODEX_THREAD_ID", Agent::Codex)];
+const ID_VARS: &[(&str, Agent)] = &[
+    ("PI_SESSION_ID", Agent::Pi),
+    ("CLAUDE_CODE_SESSION_ID", Agent::Claude),
+    ("CODEX_THREAD_ID", Agent::Codex),
+    ("CURSOR_CONVERSATION_ID", Agent::Cursor),
+];
 
 /// Env vars that only tell us which agent is running.
 const MARKER_VARS: &[(&str, Agent)] = &[
@@ -18,6 +22,7 @@ const MARKER_VARS: &[(&str, Agent)] = &[
     ("CLAUDECODE", Agent::Claude),
     ("CODEX_SANDBOX", Agent::Codex),
     ("CODEX_CI", Agent::Codex),
+    ("CURSOR_AGENT", Agent::Cursor),
 ];
 
 pub fn detect(catalog: &Catalog, cwd: &Path) -> Option<usize> {
@@ -25,7 +30,10 @@ pub fn detect(catalog: &Catalog, cwd: &Path) -> Option<usize> {
 
     for &(var, agent) in ID_VARS {
         if let Some(id) = env(var)
-            && let Some(i) = catalog.entries.iter().position(|e| e.meta.agent == agent && e.meta.id == id)
+            // Cursor subagents get their own conversation id; ours is `<parent>/<child>`.
+            && let Some(i) = catalog.entries.iter().position(|e| {
+                e.meta.agent == agent && (e.meta.id == id || e.meta.id.strip_suffix(&id).is_some_and(|p| p.ends_with('/')))
+            })
         {
             return Some(i);
         }

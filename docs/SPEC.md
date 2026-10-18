@@ -1,7 +1,7 @@
 # codeagentlog — SPEC v0
 
 A small, read-only Rust CLI that lets **any coding agent (or human)** find and read past
-conversations from **pi, Codex, and Claude Code**, organized by folder and agent.
+conversations from **pi, Codex, Claude Code, and Cursor**, organized by folder and agent.
 
 ## Motivation
 
@@ -35,19 +35,19 @@ because it only worked inside pi.
    Missing agents are skipped silently. Nothing tuned to one user's data; the counts in this spec
    are observations from one machine, not assumptions.
 
-Scope v0: **pi, Codex, Claude Code** only. Cursor / OpenCode / Gemini / others later.
+Scope: **pi, Codex, Claude Code, Cursor**. OpenCode / Gemini / others later.
 
 ---
 
 ## Commands
 
 ```
-codeagentlog tree   [PATH] [--depth N] [--agent pi|claude|codex] [--since DUR]
+codeagentlog tree   [PATH] [--depth N] [--agent pi|claude|codex|cursor] [--since DUR]
 codeagentlog ls     [PATH] [--here|--under|--near|--all] [--agent X] [--since DUR]
                     [--prompts N] [--recent N] [--group agent|folder|none] [--children] [--limit N]
 codeagentlog show   <ID|PATH|@last[:agent]> [--turns A..B|N~K | --tail N] [--role R,..] [--chat]
                     [--tools brief|full|none] [--thinking] [--events]
-                    [--branch ENTRY_ID | --all-branches] [--max-chars N]   # 0 = unlimited
+                    [--branch ENTRY_ID | --all-branches] [--db] [--max-chars N]   # 0 = unlimited
 codeagentlog grep   <PATTERN> [PATH] [scope flags] [--agent X] [--role user|assistant|tool|event]
                     [-i] [--regex] [--events] [--context N] [--limit N]
 codeagentlog path   <ID>
@@ -109,16 +109,18 @@ Which cwd a session belongs to:
 - On input, any unique prefix within a namespace resolves (the namespace is optional if the prefix
   is unique across all agents). Ambiguous prefix → list candidates, exit non-zero.
 - A raw file path is also accepted anywhere an ID is.
-- Child sessions get their own IDs (`codex:<thread id>`, `claude:<session>/<agentId>`, `pi:<id>`).
+- Child sessions get their own IDs (`codex:<thread id>`, `claude:<session>/<agentId>`,
+  `cursor:<session>/<childId>`, `pi:<id>`).
 
 ### Current session marker
 
 Listings mark the caller's own session `(current)`; it is **not** hidden.
 Detection order:
 1. pi: `PI_SESSION_ID` / `PI_SESSION_FILE` (confirmed present).
-2. Claude Code: `CLAUDE_CODE_SESSION_ID`; Codex: `CODEX_THREAD_ID` (both found in the binaries).
+2. Claude Code: `CLAUDE_CODE_SESSION_ID`; Codex: `CODEX_THREAD_ID`; Cursor: `CURSOR_CONVERSATION_ID`
+   (all found in the binaries).
 3. Fallback, only when an agent marker env var is set (`PI_CODING_AGENT`, `CLAUDECODE`,
-   `CODEX_SANDBOX`/`CODEX_CI`): that agent's newest session in cwd updated < 60s ago.
+   `CODEX_SANDBOX`/`CODEX_CI`, `CURSOR_AGENT`): that agent's newest session in cwd updated < 60s ago.
 
 ---
 
@@ -406,6 +408,35 @@ Record types observed (counts across all files):
   `tree` must show these.
 - Other Codex state (`history.jsonl`, `memories_1.sqlite`, `goals_1.sqlite`, `logs_2.sqlite`) — out of scope v0.
 
+### Cursor — `~/.cursor/projects/<slug>/agent-transcripts/<id>/<id>.jsonl` + `<id>/subagents/<childId>.jsonl`  (1145 files)
+
+| record | count | render as |
+|---|---|---|
+| `{role: assistant, message.content}` | 37716 | `assistant` (`text`, `tool_use` blocks; one record per line) |
+| `{role: user, message.content}` | 5800 | `user` |
+| `{type: turn_ended, status, error?}` | 3564 | event (`success` / `error: …` / `aborted`) |
+
+- **The transcript is thin:** no tool results, tool-call ids, model, thinking, title or cwd, and
+  timestamps only inside prompts: `<timestamp>Monday, Jul 13, 2026, 2:21 PM (UTC-4)</timestamp>`
+  (~85% of prompts). That line becomes the record time and the `<user_query>` wrapper is dropped;
+  other injected tags (`<attached_files>`, …) stay verbatim. `updated` = max(last prompt, file mtime).
+- **cwd:** `<slug>` is the workspace path with every non-alphanumeric char replaced by `-` (lossy).
+  Recovered, in order: an absolute path in tool arguments with an ancestor that slugifies to `<slug>`
+  (~77%); a filesystem walk matching the slug (longest name first); Shell `working_directory` values.
+  Multi-root workspaces (`…-Cursor-Workspaces-<n>-workspace-json`) usually stay unknown.
+- **Children:** `subagents/<childId>.jsonl`, id `cursor:<parent>/<childId>`, kind `subagent`. No
+  link back to the spawning `Task`/`Subagent` call (no tool ids).
+- **`show --db`:** Cursor's IDE database (`~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+  on macOS, `~/.config/Cursor/…` on Linux, `%APPDATA%/Cursor/…` on Windows; override with
+  `CODEAGENTLOG_CURSOR_DB`) keys the same conversations by the same id (98% overlap observed):
+  `composerData:<id>` (title `name`, `modelConfig`, ordered `fullConversationHeadersOnly`) and
+  `bubbleId:<id>:<bubbleId>` (type 1 user / 2 assistant, `createdAt`, `text`, `thinking.text`,
+  `toolFormerData {name, params, result, status, toolCallId}`). `--db` renders the session from there
+  instead: per-message timestamps, thinking, and each tool call followed by a `tool` record with its
+  result. Records are numbered in database order, so `[N]` differs from the transcript view; footers
+  carry `--db`. Content-free placeholder bubbles are `--events` only. Opened read-only with
+  `immutable=1` (never locks or writes Cursor's file). Listing, `grep` and the cache use the transcript only.
+
 ---
 
 ## Performance
@@ -437,8 +468,8 @@ codeagentlog/
   src/cache.rs                meta.sqlite
   src/render/{text,json}.rs   tree/ls/show/grep renderers, truncation + footers
   src/cmd/{tree,ls,show,grep,path,doctor,guide}.rs
-  src/adapters/{mod,pi,claude,codex}.rs
-  tests/fixtures/{pi,claude,codex}/*.jsonl   small synthetic samples
+  src/adapters/{mod,pi,claude,codex,cursor,cursor_db}.rs
+  tests/fixtures/{pi,claude,codex,cursor}/*.jsonl   small synthetic samples
   tests/*.rs                  golden-output tests per adapter + per command
 ```
 
@@ -449,8 +480,8 @@ Status: v0.1–v0.3 implemented (all commands, cache, child linking, `--json`, g
 1. **v0.1** — adapters (pi, claude, codex) + `ls` + `show` + `path`. No cache. Golden tests from fixtures.
 2. **v0.2** — `tree`, scope flags, child linking/nesting, metadata cache, `doctor`.
 3. **v0.3** — `grep`, `guide`, `(current)` marker, `--json` on all commands.
-4. **later** — Cursor (agent-transcripts, cursor-agent `store.db`, IDE `state.vscdb`), OpenCode
-   (`opencode.db`), Gemini, Amp, Factory; Homebrew/cargo install.
+4. **v0.4** — Cursor: agent-transcripts adapter + `show --db` from the IDE `state.vscdb`.
+5. **later** — cursor-agent `store.db`, OpenCode (`opencode.db`), Gemini, Amp, Factory; Homebrew/cargo install.
 
 ## Open TODOs
 
@@ -460,3 +491,4 @@ Status: v0.1–v0.3 implemented (all commands, cache, child linking, `--json`, g
 - Decide whether `tree` counts should include children by default (current plan: `roots+children`).
 - Claude `parentUuid` branches (rewind/edit): v0 renders file order linearly; revisit if confusing.
 - Confirm what pi writes `parentSession` for (fork vs other).
+- Cursor: link subagents to their spawning call.

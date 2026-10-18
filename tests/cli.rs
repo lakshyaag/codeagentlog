@@ -1,4 +1,4 @@
-//! End-to-end tests over small synthetic fixtures shaped like real pi / Claude Code / Codex logs.
+//! End-to-end tests over small synthetic fixtures shaped like real pi / Claude Code / Codex / Cursor logs.
 //!
 //! Golden outputs live in `tests/golden/`; regenerate with `UPDATE_GOLDEN=1 cargo test`.
 
@@ -9,8 +9,23 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
+/// Cursor sessions end at the transcript's mtime, so pin it for stable output.
+fn pin_cursor_mtimes() {
+    static PINNED: std::sync::Once = std::sync::Once::new();
+    PINNED.call_once(|| {
+        let at = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_790_850_600); // 2026-10-01T10:30:00Z
+        for entry in walkdir::WalkDir::new(fixtures().join("cursor")).into_iter().flatten() {
+            if entry.file_type().is_file() {
+                let file = std::fs::File::options().append(true).open(entry.path()).unwrap();
+                file.set_modified(at).unwrap();
+            }
+        }
+    });
+}
+
 /// The binary pointed at the fixtures, with a clean, deterministic environment.
 fn command() -> Command {
+    pin_cursor_mtimes();
     let fx = fixtures();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_codeagentlog"));
     for var in [
@@ -25,6 +40,9 @@ fn command() -> Command {
         "CODEX_SANDBOX",
         "CODEX_CI",
         "CODEX_HOME",
+        "CODEAGENTLOG_CURSOR_DB",
+        "CURSOR_CONVERSATION_ID",
+        "CURSOR_AGENT",
     ] {
         cmd.env_remove(var);
     }
@@ -35,7 +53,9 @@ fn command() -> Command {
         .arg("--root")
         .arg(format!("claude={}", fx.join("claude").display()))
         .arg("--root")
-        .arg(format!("codex={}", fx.join("codex").display()));
+        .arg(format!("codex={}", fx.join("codex").display()))
+        .arg("--root")
+        .arg(format!("cursor={}", fx.join("cursor").display()));
     cmd
 }
 
@@ -98,7 +118,7 @@ fn ls_limit_footer_and_current_marker() {
     let (out, _, ok) =
         run_env(&["ls", "/work", "--limit", "1"], &[("PI_SESSION_ID", "0199aaaa-0000-7000-8000-000000000001")]);
     assert!(ok);
-    assert!(out.contains("-- showing 1 of 3. more: codeagentlog ls /work --limit 21"));
+    assert!(out.contains("-- showing 1 of 4. more: codeagentlog ls /work --limit 21"));
     let (out, _, _) = run_env(&["ls", "/work"], &[("PI_SESSION_ID", "0199aaaa-0000-7000-8000-000000000001")]);
     assert!(out.contains("(current)"));
 }
@@ -296,7 +316,7 @@ fn last_shortcut_skips_current_session() {
             .env_remove("PI_CODING_AGENT");
         let root = |agent: &str| format!("{agent}={}", tmp.join(agent).display());
         cmd.arg("--no-cache");
-        for agent in ["pi", "claude", "codex"] {
+        for agent in ["pi", "claude", "codex", "cursor"] {
             cmd.args(["--root", &root(agent)]);
         }
         cmd.args(["path", "@last:pi"]);
@@ -333,4 +353,96 @@ fn color_only_when_asked_or_on_a_terminal() {
     assert!(!run(&["ls", "/work"]).contains('\x1b'), "piped output stays plain");
     assert!(run(&["ls", "/work", "--color", "always"]).contains("\x1b["));
     assert!(!run(&["ls", "/work", "--color", "always", "--json"]).contains('\x1b'));
+}
+
+const CURSOR_ID: &str = "cursor:0199dddd-0000-7000-8000-000000000001";
+
+#[test]
+fn show_cursor_unwraps_prompts_and_links_subagents() {
+    let out = run(&["show", "cursor:0199dddd"]);
+    golden("show_cursor", &out);
+    assert!(out.contains("# cursor:0199dddd-0000-7000-8000-000000000001 · /work/proj"), "cwd from tool paths");
+    assert!(out.contains("## [1] user · 10:00:00\nwhy does the otter parser drop the last line?\n"));
+    assert!(out.contains("<attached_files>src/otter.rs</attached_files>\nadd a test for it"));
+    assert!(out.contains("· turn_ended: error: User aborted request"));
+    assert!(out.contains("# 2026-10-01 10:00 → 10:30"), "ends at the transcript's mtime");
+    assert!(out.contains(&format!("# timestamps, thinking, tool results: codeagentlog show {CURSOR_ID} --db")));
+    assert!(out.contains(&format!("#   {CURSOR_ID}/0199dddd-0000-7000-8000-000000000002 (subagent")));
+
+    let ls = run(&["ls", "/work/proj", "--agent", "cursor"]);
+    assert!(ls.contains("+1 children (subagent×1)"));
+    let (ls, _, _) = run_env(
+        &["ls", "/work/proj", "--agent", "cursor"],
+        &[("CURSOR_CONVERSATION_ID", "0199dddd-0000-7000-8000-000000000001")],
+    );
+    assert!(ls.contains("(current)"));
+}
+
+/// A minimal `state.vscdb` holding the fixture session's conversation.
+fn cursor_db(dir: &Path) -> PathBuf {
+    let path = dir.join("state.vscdb");
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch("CREATE TABLE cursorDiskKV (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)").unwrap();
+    let id = "0199dddd-0000-7000-8000-000000000001";
+    let headers: Vec<_> = ["u1", "a1", "a2", "a3"].iter().map(|b| serde_json::json!({"bubbleId": b})).collect();
+    let composer = serde_json::json!({"name": "Otter parser fix", "fullConversationHeadersOnly": headers});
+    let bubbles = [
+        (
+            "u1",
+            serde_json::json!({"type": 1, "text": "why does the otter parser drop the last line?", "createdAt": "2026-10-01T10:00:01Z"}),
+        ),
+        (
+            "a1",
+            serde_json::json!({"type": 2, "text": "", "thinking": {"text": "check the loop bound"}, "createdAt": "2026-10-01T10:00:02Z"}),
+        ),
+        (
+            "a2",
+            serde_json::json!({"type": 2, "text": "", "createdAt": "2026-10-01T10:00:03Z", "toolFormerData": {
+            "name": "read_file_v2", "status": "completed", "toolCallId": "tool_1",
+            "params": "{\"targetFile\":\"/work/proj/src/otter.rs\"}",
+            "result": "{\"contents\":\"for i in 0..n - 1 {\"}"}}),
+        ),
+        ("a3", serde_json::json!({"type": 2, "text": "", "createdAt": "2026-10-01T10:00:04Z"})),
+    ];
+    let put = |key: String, value: serde_json::Value| {
+        conn.execute("INSERT INTO cursorDiskKV VALUES (?1, ?2)", rusqlite::params![key, value.to_string()]).unwrap();
+    };
+    put(format!("composerData:{id}"), composer);
+    for (bubble, value) in bubbles {
+        put(format!("bubbleId:{id}:{bubble}"), value);
+    }
+    path
+}
+
+#[test]
+fn show_cursor_db_reads_the_full_conversation() {
+    let dir = std::env::temp_dir().join(format!("codeagentlog-cursor-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = cursor_db(&dir);
+    let env = [("CODEAGENTLOG_CURSOR_DB", db.to_str().unwrap())];
+    let show = |args: &[&str]| {
+        let (out, err, ok) = run_env(&[&["show", "cursor:0199dddd", "--db"], args].concat(), &env);
+        assert!(ok, "{err}");
+        out
+    };
+
+    let out = show(&["--thinking", "--tools", "full"]);
+    assert!(out.contains("# title \"Otter parser fix\" (cursor-db)"));
+    assert!(out.contains("# from Cursor's database"));
+    assert!(out.contains("## [1] user · 10:00:01"));
+    assert!(out.contains("check the loop bound"));
+    assert!(out.contains("→ read_file_v2"));
+    assert!(out.contains("## [4] tool · read_file_v2 · ok · 10:00:03\n  ← 1 lines, 19 chars\n    for i in 0..n - 1 {"));
+    assert!(!out.contains("## [5]"), "empty placeholder hidden without --events");
+    assert!(show(&["--events"]).contains("## [5] assistant"));
+
+    let paged = show(&["--max-chars", "120"]);
+    assert!(paged.lines().any(|l| l.contains("next: codeagentlog show") && l.contains(" --db")));
+
+    let (_, err, ok) = run_env(&["show", "claude:1111", "--db"], &env);
+    assert!(!ok && err.contains("--db only applies to cursor sessions"));
+    let (_, err, ok) =
+        run_env(&["show", "cursor:0199dddd", "--db"], &[("CODEAGENTLOG_CURSOR_DB", "/nonexistent.vscdb")]);
+    assert!(!ok && err.contains("Cursor's database not found"));
+    let _ = std::fs::remove_dir_all(&dir);
 }

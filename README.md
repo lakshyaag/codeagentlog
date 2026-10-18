@@ -1,6 +1,6 @@
 # codeagentlog
 
-A small, read-only CLI for finding and reading past **pi**, **Claude Code**, and **Codex**
+A small, read-only CLI for finding and reading past **pi**, **Claude Code**, **Codex**, and **Cursor**
 conversations, organized by folder and agent. Built so coding agents (and humans) stop writing
 throwaway `jq` parsers over multi-MB session logs.
 
@@ -40,6 +40,7 @@ codeagentlog grep "benchmark-variant" -i  # each hit prints the show command to 
 codeagentlog show pi:01a11a9a --turns 57~5            # records 52..62
 codeagentlog show codex:019f --turns 40..80 --tools full --thinking --events
 codeagentlog show claude:d3d1 --role user             # only your prompts
+codeagentlog show cursor:6089 --db --tools full       # Cursor: full conversation from its database
 codeagentlog tree ~/Projects --depth 2
 codeagentlog path claude:d3d1             # transcript file
 codeagentlog doctor                       # dirs, counts, parse errors, unknown record types
@@ -71,14 +72,19 @@ Output is plain text when piped (what agents see). On a terminal it's colored an
 | pi | `~/.pi/agent/sessions/` | `PI_CODING_AGENT_DIR` |
 | Claude Code | `~/.claude/projects/` | `CLAUDE_CONFIG_DIR` |
 | Codex | `~/.codex/sessions/`, `~/.codex/archived_sessions/` | `CODEX_HOME` |
+| Cursor | `~/.cursor/projects/*/agent-transcripts/` | `--root cursor=PATH` |
 
 Or pass `--root agent=PATH` (the agent's home dir, e.g. `--root codex=/tmp/codex`). Missing agents
 are skipped. The tool never writes to agent directories; its only state is a metadata cache at
 `$XDG_CACHE_HOME/codeagentlog/meta.sqlite` (default `~/.cache/…`), safe to delete anytime
 (`--no-cache` bypasses it).
 
-The caller's own session is marked `(current)` via `PI_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, or
-`CODEX_THREAD_ID`.
+Cursor's transcripts leave out tool results, thinking, and most timestamps. `show <id> --db` reads
+the same conversation from Cursor's own database instead (`state.vscdb` under Cursor's app-data dir,
+or `$CODEAGENTLOG_CURSOR_DB`), read-only. Its records are numbered separately from the transcript's.
+
+The caller's own session is marked `(current)` via `PI_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`,
+`CODEX_THREAD_ID`, or `CURSOR_CONVERSATION_ID`.
 
 ## Development
 

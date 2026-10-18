@@ -1,0 +1,31 @@
+# cursor:0199dddd-0000-7000-8000-000000000001 · /work/proj
+# 2026-10-01 10:00 → 10:30 · 2 prompts · 7 records
+# title "why does the otter parser drop the last line?" (first-user)
+# file ~/cursor/projects/work-proj/agent-transcripts/0199dddd-0000-7000-8000-000000000001/0199dddd-0000-7000-8000-000000000001.jsonl
+# children (1):
+#   cursor:0199dddd-0000-7000-8000-000000000001/0199dddd-0000-7000-8000-000000000002 (subagent: "List every caller of otter::parse in /work/proj.")
+# timestamps, thinking, tool results: codeagentlog show cursor:0199dddd-0000-7000-8000-000000000001 --db
+
+## [1] user · 10:00:00
+why does the otter parser drop the last line?
+
+## [2] assistant
+Reading the parser first.
+  → Read {"path":"/work/proj/src/otter.rs"}
+
+## [3] assistant
+  → Task {"description":"Find otter callers","prompt":"List every caller of otter::parse in /work/proj.","subagent_type":"explore"}
+
+## [4] assistant
+The loop stops one line early; fixed the bound.
+
+## [5] event
+· turn_ended: success
+
+## [6] user
+<attached_files>src/otter.rs</attached_files>
+add a test for it
+
+## [7] event
+· turn_ended: error: User aborted request
+

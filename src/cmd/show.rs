@@ -5,9 +5,10 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use super::{Ctx, to_json};
+use crate::adapters::cursor_db;
 use crate::branches::Branches;
 use crate::catalog::Catalog;
-use crate::model::{Role, Session, Turn};
+use crate::model::{Agent, Role, Session, Turn};
 use crate::render::{Renderer, ToolsMode};
 use crate::text::{tilde, truncate};
 use crate::{ShowArgs, style, time};
@@ -44,7 +45,7 @@ impl Range {
 
 pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
     let catalog = ctx.catalog(&[]);
-    let (session, entry) = load(ctx, &catalog, &args.id)?;
+    let (session, entry) = load(ctx, &catalog, &args.id, args.db)?;
     let branches = Branches::of(&session.turns);
     let branch_path = select_branch(branches.as_ref(), &args)?;
     let range = args.turns.as_deref().map(Range::parse).transpose()?.unwrap_or_default();
@@ -92,6 +93,11 @@ pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
     }
 
     let mut out = header(&session, &catalog, entry);
+    if args.db {
+        out.push_str("# from Cursor's database (record numbers differ from the transcript)\n");
+    } else if session.meta.agent == Agent::Cursor {
+        writeln!(out, "# timestamps, thinking, tool results: codeagentlog show {id} --db")?;
+    }
     out.push('\n');
     out.push_str(&page.text);
     if visible.is_empty() {
@@ -112,7 +118,8 @@ pub fn run(ctx: &Ctx, args: ShowArgs) -> Result<String> {
 }
 
 /// Load by reference (via the catalog) or by file path (even outside known roots).
-fn load(ctx: &Ctx, catalog: &Catalog, query: &str) -> Result<(Session, Option<usize>)> {
+/// `db`: the Cursor database's version of the session.
+fn load(ctx: &Ctx, catalog: &Catalog, query: &str, db: bool) -> Result<(Session, Option<usize>)> {
     let path = Path::new(query);
     let entry = match ctx.resolve(catalog, query) {
         Ok(i) => Some(i),
@@ -130,6 +137,9 @@ fn load(ctx: &Ctx, catalog: &Catalog, query: &str) -> Result<(Session, Option<us
     if let Some(i) = entry {
         // Catalog metadata includes agent-wide decoration (e.g. Codex thread names).
         session.meta.title = catalog.entries[i].meta.title.clone();
+    }
+    if db {
+        session = cursor_db::load(session.meta)?;
     }
     Ok((session, entry))
 }
@@ -182,11 +192,12 @@ fn paginate(renderer: &Renderer, session: &Session, visible: &[&Turn], args: &Sh
         if len > budget && (used == 0 || room >= MIN_CUT) {
             let keep = room.min(budget);
             text = format!(
-                "{}\n  … {} chars omitted; full: codeagentlog show {id} --turns {} --tools full --max-chars 0{}\n",
+                "{}\n  … {} chars omitted; full: codeagentlog show {id} --turns {} --tools full --max-chars 0{}{}\n",
                 truncate(&text, keep),
                 len - keep,
                 t.idx,
-                if args.thinking { " --thinking" } else { "" }
+                if args.thinking { " --thinking" } else { "" },
+                if args.db { " --db" } else { "" }
             );
         } else if used > 0 && used + len > budget {
             page.next = Some(t.idx);
@@ -274,6 +285,7 @@ fn next_command(id: &str, args: &ShowArgs, next: usize, end: Option<usize>) -> S
         (args.thinking, " --thinking"),
         (args.events, " --events"),
         (args.all_branches, " --all-branches"),
+        (args.db, " --db"),
     ];
     for (on, flag) in flags {
         if on {
