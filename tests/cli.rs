@@ -468,8 +468,8 @@ fn setup_writes_only_with_approval() {
 
     // Without --yes and without a terminal: list the plan, write nothing.
     let plan = setup(&[]);
-    assert!(plan.contains("create   ~/.claude/skills/codeagentlog/SKILL.md  (claude)"), "{plan}");
-    assert!(plan.contains("create   ~/.agents/skills/codeagentlog/SKILL.md  (codex)"), "{plan}");
+    assert!(plan.contains("create   ~/.claude/skills/codeagentlog/SKILL.md  (Claude Code)"), "{plan}");
+    assert!(plan.contains("create   ~/.agents/skills/codeagentlog/SKILL.md  (Codex)"), "{plan}");
     assert!(plan.contains("Nothing was written") && plan.contains("codeagentlog setup --yes"));
     assert!(!claude.exists() && !shared.exists());
 

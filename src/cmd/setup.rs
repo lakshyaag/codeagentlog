@@ -3,7 +3,7 @@
 //! or a "y" at the prompt on a terminal. Without either it lists what it would write and stops.
 
 use std::fmt::Write as _;
-use std::io::{IsTerminal, Write as _};
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -66,14 +66,16 @@ pub fn run(ctx: &Ctx, yes: bool, remove: bool) -> Result<String> {
     }
     let todo: Vec<&Target> =
         targets.iter().filter(|t| if remove { t.state != State::Missing } else { t.state != State::Current }).collect();
-    let interactive = !ctx.json && !yes && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
-    let approved = !todo.is_empty() && (yes || (interactive && confirm(&todo, remove)?));
+    if !ctx.json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+        return walkthrough(&targets, &todo, yes, remove);
+    }
+
+    let approved = !todo.is_empty() && yes;
     if approved {
         for t in &todo {
             apply(t, remove)?;
         }
     }
-
     if ctx.json {
         return to_json(&serde_json::json!({
             "action": if remove { "remove" } else { "install" },
@@ -89,9 +91,7 @@ pub fn run(ctx: &Ctx, yes: bool, remove: bool) -> Result<String> {
         for t in targets.iter().filter(|t| t.state != State::Missing) {
             writeln!(out, "  {}", line(t, "current"))?;
         }
-        return Ok(out);
-    }
-    if approved {
+    } else if approved {
         for t in &todo {
             writeln!(out, "{}", line(t, done(t, remove)))?;
         }
@@ -100,10 +100,12 @@ pub fn run(ctx: &Ctx, yes: bool, remove: bool) -> Result<String> {
         } else {
             writeln!(out, "Agents pick up the skill in new sessions. Undo with `codeagentlog setup --remove`.")?;
         }
-    } else if interactive {
-        writeln!(out, "Nothing was written.")?;
     } else {
-        out.push_str(&plan(&todo, remove));
+        let what = if remove { "remove its agent skill" } else { "install its agent skill" };
+        writeln!(out, "codeagentlog setup will {what}:")?;
+        for t in &todo {
+            writeln!(out, "  {}", line(t, verb(t, remove)))?;
+        }
         let cmd = if remove { "codeagentlog setup --remove --yes" } else { "codeagentlog setup --yes" };
         writeln!(out, "Nothing was written. Agents: show the user this list and ask for approval before running")?;
         writeln!(out, "`{cmd}`, which changes exactly these files and nothing else.")?;
@@ -111,19 +113,67 @@ pub fn run(ctx: &Ctx, yes: bool, remove: bool) -> Result<String> {
     Ok(out)
 }
 
-fn plan(todo: &[&Target], remove: bool) -> String {
-    let mut out = String::new();
-    let what = if remove { "remove its agent skill" } else { "install its agent skill" };
-    let _ = writeln!(out, "codeagentlog setup will {what}:");
-    for t in todo {
-        let _ = writeln!(out, "  {}", line(t, verb(t, remove)));
+/// On a terminal: a short walkthrough on stderr, then one yes/no (skipped with `--yes`).
+fn walkthrough(targets: &[Target], todo: &[&Target], yes: bool, remove: bool) -> Result<String> {
+    use cliclack::{confirm, intro, log, note, outro, outro_cancel};
+    intro(if remove { "codeagentlog setup --remove" } else { "codeagentlog setup" })?;
+    if todo.is_empty() {
+        if remove {
+            outro("The skill isn't installed, so there's nothing to remove.")?;
+        } else {
+            let installed: Vec<String> = targets.iter().map(|t| line(t, "")).collect();
+            note("Installed", installed.join("\n"))?;
+            outro("The skill is already installed and up to date.")?;
+        }
+        return Ok(String::new());
     }
-    out
+    let files: Vec<String> = todo.iter().map(|t| line(t, verb(t, remove))).collect();
+    if remove {
+        note("Remove the skill", format!("These files will be deleted:\n\n{}", files.join("\n")))?;
+    } else {
+        let mut found: Vec<Agent> = targets.iter().flat_map(|t| t.agents.iter().copied()).collect();
+        found.sort();
+        found.dedup();
+        log::info(format!("Found {}.", found.iter().map(|&a| label(a)).collect::<Vec<_>>().join(", ")))?;
+        note(
+            "Install the skill",
+            format!(
+                "The skill teaches your agents to find and read past sessions\nwith codeagentlog. It will be written to:\n\n{}",
+                files.join("\n")
+            ),
+        )?;
+    }
+    let question = if remove { "Remove these files?" } else { "Write these files?" };
+    if !(yes || confirm(question).initial_value(false).interact().unwrap_or(false)) {
+        outro_cancel("Nothing was changed.")?;
+        return Ok(String::new());
+    }
+    for t in todo {
+        apply(t, remove)?;
+        log::success(line(t, done(t, remove)))?;
+    }
+    outro(if remove {
+        "Removed. Nothing else was changed."
+    } else {
+        "Done. Start a new agent session to use it. Undo with `codeagentlog setup --remove`."
+    })?;
+    Ok(String::new())
 }
 
+/// `<action>  <path>  (<agents>)`
 fn line(t: &Target, action: &str) -> String {
-    let agents: Vec<&str> = t.agents.iter().map(|a| a.name()).collect();
-    format!("{action:<7}  {}  {}", style::path(&tilde(&t.path)), style::dim(&format!("({})", agents.join(", "))))
+    let agents: Vec<&str> = t.agents.iter().map(|&a| label(a)).collect();
+    let action = if action.is_empty() { String::new() } else { format!("{action:<7}  ") };
+    format!("{action}{}  {}", style::path(&tilde(&t.path)), style::dim(&format!("({})", agents.join(", "))))
+}
+
+fn label(a: Agent) -> &'static str {
+    match a {
+        Agent::Pi => "pi",
+        Agent::Claude => "Claude Code",
+        Agent::Codex => "Codex",
+        Agent::Cursor => "Cursor",
+    }
 }
 
 fn verb(t: &Target, remove: bool) -> &'static str {
@@ -140,16 +190,6 @@ fn done(t: &Target, remove: bool) -> &'static str {
         "update" => "updated",
         _ => "created",
     }
-}
-
-/// Ask on the terminal. Anything but y/yes is a no.
-fn confirm(todo: &[&Target], remove: bool) -> Result<bool> {
-    let mut err = std::io::stderr();
-    write!(err, "{}{} [y/N] ", plan(todo, remove), if remove { "Remove?" } else { "Write these files?" })?;
-    err.flush()?;
-    let mut answer = String::new();
-    std::io::stdin().read_line(&mut answer)?;
-    Ok(matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
 }
 
 fn apply(t: &Target, remove: bool) -> Result<()> {
