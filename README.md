@@ -8,10 +8,9 @@ Find and read your past coding-agent conversations from the terminal:
 organized by the folder you worked in.
 
 Every coding agent saves its history to disk, each in its own format, usually as multi-MB JSONL
-files. Whenever I wanted to know "what did we try in this repo last week?", or worse, whenever an
-agent wanted to know, the answer was another throwaway `jq` parser. This is the tool I wanted
-instead. It's read-only, works offline, and its output is meant to be read by agents as much as by
-people.
+files. Whenever I wanted "what did we try in this repo last week?" — or worse, whenever an agent
+wanted to know — the answer was another throwaway `jq` parser. This is the tool I wanted instead:
+read-only, works offline, meant to be read by agents as much as by people.
 
 ```console
 $ codeagentlog grep "rate limit" --since 7d
@@ -25,13 +24,13 @@ Every hit ends with the exact command to open it.
 
 ## Install
 
-Paste this into a terminal (macOS and Linux):
+macOS and Linux:
 
 ```sh
 curl -fsSL https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
 ```
 
-On Windows, in PowerShell:
+Windows, in PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
@@ -44,56 +43,45 @@ source with Rust 1.85+:
 cargo install --git https://github.com/lakshyaag/codeagentlog --locked
 ```
 
-### Or have your agent do it
+<details>
+<summary>Or have your agent do it</summary>
 
-Paste this into Claude Code, Codex, pi, or Cursor. The agent installs the tool, then shows you what
-the skill install would write and waits for your OK:
+Paste this into Claude Code, Codex, pi, or Cursor:
 
 ```text
 Install codeagentlog (https://github.com/lakshyaag/codeagentlog), a CLI for reading past coding-agent sessions.
 1. Run: curl -fsSL https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
-   On Windows, run instead: powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
-   It installs to ~/.cargo/bin; use that full path if the command isn't found yet.
-2. Run `codeagentlog setup`. It writes nothing; it lists the skill files it would add. Show me that list and
-   explain that `codeagentlog setup --yes` writes exactly those files. Only run it if I say yes.
+   On Windows instead: powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
+   It installs to ~/.cargo/bin; use that path if the command isn't found yet.
+2. Run `codeagentlog setup`. It writes nothing; it lists the skill files it would add. Show me the list and
+   wait for my OK before running it with --yes.
 3. Run `codeagentlog doctor` and tell me which agents' sessions it found.
 ```
+
+</details>
 
 ## Quick start
 
 ```sh
-codeagentlog ls                          # sessions in this folder and below, newest first
+codeagentlog ls                          # sessions in this folder, newest first
 codeagentlog show @last --chat --tail 10 # where the last session here left off
-codeagentlog grep "flaky test"           # search everything you've done with any agent
+codeagentlog grep "flaky test"           # search everything, every agent
 codeagentlog tree ~/code                 # which folders have sessions, per agent
 ```
 
 ## Let your agents use it
 
-This is where it's most useful. Install the codeagentlog skill and your agents learn to use it on
-their own:
+This is the part I built it for. `codeagentlog setup` installs a skill file for each agent you
+have — `~/.claude/skills/` for Claude Code, `~/.agents/skills/` for Codex, pi, and Cursor (Cursor
+reads both) — so they reach for the tool on their own. It shows you the files first and only
+writes with `--yes`. `--remove` takes them back out, and re-running it after an upgrade refreshes
+the skill (`doctor` says when it's stale). For an agent without skills support,
+`codeagentlog guide >> AGENTS.md` writes the same instructions into your AGENTS.md.
 
-```sh
-codeagentlog setup
-```
-
-It lists the files it will add and asks before writing anything: one `SKILL.md` in
-`~/.claude/skills/` (Claude Code and Cursor) and one in `~/.agents/skills/` (Codex, pi, and Cursor),
-only for the agents you have. Run it again after upgrading to refresh the skill (`doctor` tells you
-when it's out of date), and `codeagentlog setup --remove` takes it back out. When an agent runs
-`setup` it can't answer the prompt, so it only gets the list and has to ask you before passing
-`--yes`.
-
-For an agent without skills support, paste the same instructions into its instructions file:
-
-```sh
-codeagentlog guide >> AGENTS.md
-```
-
-Now you can say "pick up where the last session left off" or "how did we fix this in the other
-repo?" and the agent looks it up itself. Agents get plain text with no colors or pager, long output
-is cut off with the exact command to see the rest, and the agent's own session is marked
-`(current)` so it doesn't read itself back.
+After that, "pick up where the last session left off" and "how did we fix this in the other repo?"
+just work. When an agent runs it, output is plain text — no colors, no pager — and long output is
+cut off with the exact command to see the rest. The agent's own session is marked `(current)` so
+it doesn't read itself back.
 
 ## Usage
 
@@ -118,30 +106,27 @@ codeagentlog show cursor:6089 --db --tools full      # Cursor, with tool output 
 codeagentlog path claude:d3d1                        # where the transcript file lives
 ```
 
-A session can be named by `agent:prefix`, any unique prefix, a file path, or `@last` /
-`@last:<agent>` (the newest session under the current folder, not counting the one you're in).
+A session can be named `agent:prefix`, any unique prefix, a file path, or `@last` /
+`@last:<agent>` — the newest session under the current folder, not counting the one you're in.
 
 ### Everything else
 
 - `--json` works on every command.
-- `codeagentlog doctor` shows which agent dirs were found, how many sessions each has, and anything
-  that failed to parse.
+- `doctor` shows which agent dirs were found, how many sessions each has, and anything that
+  failed to parse.
 - On a terminal, output is colored and paged with `less -FRX`. `--color always|never`, `NO_COLOR`,
   `FORCE_COLOR`, `--no-pager`, and `$CODEAGENTLOG_PAGER` / `$PAGER` change that.
 
 ## How it behaves
 
-- **Records are numbered once, in file order.** Flags like `--events`, `--tools none`, or
-  `--branch` hide records but never renumber them, so a `[57]` from `grep` or `ls` always points
-  at the same record.
-- **Nothing is filtered by judgment.** Every record is shown. You narrow it down yourself with
-  `--role`, `--turns`, `--agent`, `--since`, `--tools`, and `--events`.
-- **Hidden doesn't mean unsearchable.** Thinking, Codex `event_msg` records, and abandoned pi
-  branches are hidden by default but still searched by `grep`, and each hit includes the flags
-  needed to see it.
-- **Subagents stay with their parent.** Claude subagents, Codex guardian/subagent threads, and
-  Cursor subagents nest under the session that started them in `ls` (`--children` expands them),
-  and `grep` always searches them.
+- Records are numbered once, in file order. `--events`, `--tools none`, and `--branch` hide
+  records but never renumber them, so a `[57]` from `grep` or `ls` always means the same record.
+- Nothing is filtered by judgment. Every record is there; narrow it down yourself with `--role`,
+  `--turns`, `--agent`, `--since`, `--tools`, and `--events`.
+- Hidden doesn't mean unsearchable: thinking, Codex `event_msg` records, and abandoned pi branches
+  are hidden by default but still searched by `grep`, and each hit says which flags reveal them.
+- Subagent threads (Claude, Codex, Cursor) nest under the session that started them in `ls`
+  (`--children` expands them), and `grep` always searches them.
 
 ## Where the data comes from
 
@@ -155,16 +140,15 @@ A session can be named by `agent:prefix`, any unique prefix, a file path, or `@l
 `--root agent=PATH` points any agent at a different home dir (e.g. `--root codex=/tmp/codex`).
 Agents that aren't installed are skipped.
 
-**Cursor:** its transcript files leave out tool output, thinking, and most timestamps. `show <id>
---db` reads the same conversation from Cursor's own database (`state.vscdb` in Cursor's app-data
-dir, or `$CODEAGENTLOG_CURSOR_DB`). The database view has extra records, so its record numbers
-don't match the plain view. `grep` only searches the transcripts.
+**Cursor:** transcript files leave out tool output, thinking, and most timestamps. `show <id>
+--db` reads the same conversation from Cursor's own database (`state.vscdb` in its app-data dir,
+or `$CODEAGENTLOG_CURSOR_DB`). The database view has extra records, so record numbers don't match
+the plain view, and `grep` only searches the transcripts.
 
-**Privacy:** everything stays on your machine. codeagentlog never writes to any agent's files
-(Cursor's database is opened read-only, without locking it) and makes no network requests. The one
-exception is `setup`, which adds its own skill folder only after you approve it. Its only other
-state is a metadata cache at `$XDG_CACHE_HOME/codeagentlog/meta.sqlite` (default `~/.cache/…`),
-which is safe to delete anytime. `--no-cache` skips it.
+**Privacy:** everything stays local — no network requests, no writes to agent files (Cursor's
+database is opened read-only, without locking it). The only writes are the skill folder you
+approve in `setup` and a metadata cache at `$XDG_CACHE_HOME/codeagentlog/meta.sqlite`, safe to
+delete anytime (`--no-cache` skips it).
 
 ## Development
 
