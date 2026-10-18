@@ -28,7 +28,7 @@ Every hit ends with the exact command to open it.
 Paste this into a terminal (macOS and Linux):
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
+curl -fsSL https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
 ```
 
 On Windows, in PowerShell:
@@ -51,7 +51,7 @@ it:
 
 ```text
 Install codeagentlog (https://github.com/lakshyaag/codeagentlog), a CLI for reading past coding-agent sessions.
-1. Run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
+1. Run: curl -fsSL https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
    On Windows, run instead: powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
 2. Run `codeagentlog guide`. It installs to ~/.cargo/bin, so use that full path if the command isn't found yet.
 3. Add the guide's output to my global agent instructions, e.g. ~/.claude/CLAUDE.md for Claude Code or ~/.codex/AGENTS.md for Codex. Skip this if it's already there, and ask me if you're not sure which file I use.
