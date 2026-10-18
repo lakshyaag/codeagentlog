@@ -25,13 +25,13 @@ Every hit ends with the exact command to open it.
 
 ## Install
 
-macOS and Linux:
+Paste this into a terminal (macOS and Linux):
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
 ```
 
-Windows (PowerShell):
+On Windows, in PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
@@ -42,6 +42,20 @@ source with Rust 1.85+:
 
 ```sh
 cargo install --git https://github.com/lakshyaag/codeagentlog --locked
+```
+
+### Or have your agent do it
+
+Paste this into Claude Code, Codex, pi, or Cursor. It installs the tool and teaches the agent to use
+it:
+
+```text
+Install codeagentlog (https://github.com/lakshyaag/codeagentlog), a CLI for reading past coding-agent sessions.
+1. Run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
+   On Windows, run instead: powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
+2. Run `codeagentlog guide`. It installs to ~/.cargo/bin, so use that full path if the command isn't found yet.
+3. Add the guide's output to my global agent instructions, e.g. ~/.claude/CLAUDE.md for Claude Code or ~/.codex/AGENTS.md for Codex. Skip this if it's already there, and ask me if you're not sure which file I use.
+4. Run `codeagentlog doctor` and tell me which agents' sessions it found.
 ```
 
 ## Quick start
@@ -55,7 +69,8 @@ codeagentlog tree ~/code                 # which folders have sessions, per agen
 
 ## Let your agents use it
 
-This is where it's most useful. Paste the guide into your agent's instructions:
+This is where it's most useful. The agent prompt above sets it up for you; to do it by hand, add the
+guide to your agent's instructions:
 
 ```sh
 codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md
