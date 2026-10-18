@@ -1,8 +1,27 @@
 # codeagentlog
 
-A small, read-only CLI for finding and reading past **pi**, **Claude Code**, **Codex**, and **Cursor**
-conversations, organized by folder and agent. Built so coding agents (and humans) stop writing
-throwaway `jq` parsers over multi-MB session logs.
+[![CI](https://github.com/lakshyaag/codeagentlog/actions/workflows/ci.yml/badge.svg)](https://github.com/lakshyaag/codeagentlog/actions/workflows/ci.yml)
+
+Find and read your past coding-agent conversations from the terminal:
+[pi](https://github.com/badlogic/pi-mono), [Claude Code](https://www.anthropic.com/claude-code),
+[Codex](https://github.com/openai/codex), and [Cursor](https://cursor.com), all in one place,
+organized by the folder you worked in.
+
+Every coding agent saves its history to disk, each in its own format, usually as multi-MB JSONL
+files. Whenever I wanted to know "what did we try in this repo last week?", or worse, whenever an
+agent wanted to know, the answer was another throwaway `jq` parser. This is the tool I wanted
+instead. It's read-only, works offline, and its output is meant to be read by agents as much as by
+people.
+
+```console
+$ codeagentlog grep "rate limit" --since 7d
+claude:d3d1f0a2-5c1e-4b7a-9e0f-2a6c8b1d4e37  ~/code/api  2026-10-14  6 prompts  212 records
+  [57] user: why do the retries keep hitting the rate limit?
+  [61] assistant: The backoff resets on every request, so the client never actually waits…
+  → codeagentlog show claude:d3d1f0a2-5c1e-4b7a-9e0f-2a6c8b1d4e37 --turns 57~5
+```
+
+Every hit ends with the exact command to open it.
 
 ## Install
 
@@ -18,55 +37,84 @@ Windows (PowerShell):
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
 ```
 
-Or download a binary from [Releases](https://github.com/lakshyaag/codeagentlog/releases). To
-build from source instead (Rust 1.85+):
+Or grab a binary from [Releases](https://github.com/lakshyaag/codeagentlog/releases), or build from
+source with Rust 1.85+:
 
 ```sh
 cargo install --git https://github.com/lakshyaag/codeagentlog --locked
 ```
 
-Then tell agents how to use it:
+## Quick start
+
+```sh
+codeagentlog ls                          # sessions in this folder and below, newest first
+codeagentlog show @last --chat --tail 10 # where the last session here left off
+codeagentlog grep "flaky test"           # search everything you've done with any agent
+codeagentlog tree ~/code                 # which folders have sessions, per agent
+```
+
+## Let your agents use it
+
+This is where it's most useful. Paste the guide into your agent's instructions:
 
 ```sh
 codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md
 ```
 
+Now you can say "pick up where the last session left off" or "how did we fix this in the other
+repo?" and the agent looks it up itself. Agents get plain text with no colors or pager, long output
+is cut off with the exact command to see the rest, and the agent's own session is marked
+`(current)` so it doesn't read itself back.
+
 ## Usage
 
+### Find sessions
+
 ```sh
-codeagentlog ls --recent 2                # sessions for cwd and below, newest first, with last 2 prompts
-codeagentlog ls --near --since 2d         # also parent folders, only recent sessions
-codeagentlog show @last --chat --tail 10  # where the previous session here left off
-codeagentlog grep "benchmark-variant" -i  # each hit prints the show command to open it
-codeagentlog show pi:01a11a9a --turns 57~5            # records 52..62
-codeagentlog show codex:019f --turns 40..80 --tools full --thinking --events
-codeagentlog show claude:d3d1 --role user             # only your prompts
-codeagentlog show cursor:6089 --db --tools full       # Cursor: full conversation from its database
+codeagentlog ls --recent 2               # also show the last 2 prompts of each session
+codeagentlog ls --near --since 2d        # include parent folders, only the last 2 days
+codeagentlog ls --all --agent codex      # every Codex session, anywhere
 codeagentlog tree ~/Projects --depth 2
-codeagentlog path claude:d3d1             # transcript file
-codeagentlog doctor                       # dirs, counts, parse errors, unknown record types
 ```
 
-Session references: `agent:prefix`, any unique prefix, a file path, or `@last` / `@last:<agent>` (newest
-session under cwd, excluding the one you're in).
+### Read one
 
-All commands accept `--json`. Truncated output always ends with the exact command to continue.
+```sh
+codeagentlog show claude:d3d1                        # any unique id prefix works
+codeagentlog show @last:codex                        # newest Codex session here
+codeagentlog show pi:01a1 --turns 57~5               # records 52 to 62
+codeagentlog show codex:019f --turns 40..80 --tools full --thinking --events
+codeagentlog show claude:d3d1 --role user            # only your prompts
+codeagentlog show cursor:6089 --db --tools full      # Cursor, with tool output (see below)
+codeagentlog path claude:d3d1                        # where the transcript file lives
+```
 
-Output is plain text when piped (what agents see). On a terminal it's colored and paged
-(`less -FRX`); `--color always|never`, `NO_COLOR`, `FORCE_COLOR`, `--no-pager`, and
-`$CODEAGENTLOG_PAGER` / `$PAGER` adjust that.
+A session can be named by `agent:prefix`, any unique prefix, a file path, or `@last` /
+`@last:<agent>` (the newest session under the current folder, not counting the one you're in).
 
-- **Records are numbered once, in file order**, across every stream and branch. Flags like
-  `--events`, `--tools none`, or `--branch` hide records but never renumber, so `[N]` from
-  `grep`, `ls`, or a footer always points at the same record.
-- **Nothing is filtered by judgment.** Every record renders; you narrow with `--role`, `--turns`,
-  `--agent`, `--since`, `--tools`, `--events`.
-- **Hidden-by-default content** (thinking, Codex `event_msg`, inactive pi branches) is still
-  searched by `grep`, and each such hit carries the `show` flags needed to see it.
-- **Child sessions** (Claude subagents, Codex guardian/subagent threads) nest under their parent
-  in `ls` (`--children` expands them) and are always searched by `grep`.
+### Everything else
 
-## Where data comes from
+- `--json` works on every command.
+- `codeagentlog doctor` shows which agent dirs were found, how many sessions each has, and anything
+  that failed to parse.
+- On a terminal, output is colored and paged with `less -FRX`. `--color always|never`, `NO_COLOR`,
+  `FORCE_COLOR`, `--no-pager`, and `$CODEAGENTLOG_PAGER` / `$PAGER` change that.
+
+## How it behaves
+
+- **Records are numbered once, in file order.** Flags like `--events`, `--tools none`, or
+  `--branch` hide records but never renumber them, so a `[57]` from `grep` or `ls` always points
+  at the same record.
+- **Nothing is filtered by judgment.** Every record is shown. You narrow it down yourself with
+  `--role`, `--turns`, `--agent`, `--since`, `--tools`, and `--events`.
+- **Hidden doesn't mean unsearchable.** Thinking, Codex `event_msg` records, and abandoned pi
+  branches are hidden by default but still searched by `grep`, and each hit includes the flags
+  needed to see it.
+- **Subagents stay with their parent.** Claude subagents, Codex guardian/subagent threads, and
+  Cursor subagents nest under the session that started them in `ls` (`--children` expands them),
+  and `grep` always searches them.
+
+## Where the data comes from
 
 | Agent | Default location | Override |
 |---|---|---|
@@ -75,17 +123,18 @@ Output is plain text when piped (what agents see). On a terminal it's colored an
 | Codex | `~/.codex/sessions/`, `~/.codex/archived_sessions/` | `CODEX_HOME` |
 | Cursor | `~/.cursor/projects/*/agent-transcripts/` | `--root cursor=PATH` |
 
-Or pass `--root agent=PATH` (the agent's home dir, e.g. `--root codex=/tmp/codex`). Missing agents
-are skipped. The tool never writes to agent directories; its only state is a metadata cache at
-`$XDG_CACHE_HOME/codeagentlog/meta.sqlite` (default `~/.cache/…`), safe to delete anytime
-(`--no-cache` bypasses it).
+`--root agent=PATH` points any agent at a different home dir (e.g. `--root codex=/tmp/codex`).
+Agents that aren't installed are skipped.
 
-Cursor's transcripts leave out tool results, thinking, and most timestamps. `show <id> --db` reads
-the same conversation from Cursor's own database instead (`state.vscdb` under Cursor's app-data dir,
-or `$CODEAGENTLOG_CURSOR_DB`), read-only. Its records are numbered separately from the transcript's.
+**Cursor:** its transcript files leave out tool output, thinking, and most timestamps. `show <id>
+--db` reads the same conversation from Cursor's own database (`state.vscdb` in Cursor's app-data
+dir, or `$CODEAGENTLOG_CURSOR_DB`). The database view has extra records, so its record numbers
+don't match the plain view. `grep` only searches the transcripts.
 
-The caller's own session is marked `(current)` via `PI_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`,
-`CODEX_THREAD_ID`, or `CURSOR_CONVERSATION_ID`.
+**Privacy:** everything stays on your machine. codeagentlog never writes to any agent's files
+(Cursor's database is opened read-only, without locking it) and makes no network requests. Its only
+state is a metadata cache at `$XDG_CACHE_HOME/codeagentlog/meta.sqlite` (default `~/.cache/…`),
+which is safe to delete anytime. `--no-cache` skips it.
 
 ## Development
 
@@ -94,10 +143,12 @@ cargo test                      # unit + end-to-end tests over tests/fixtures
 UPDATE_GOLDEN=1 cargo test      # regenerate tests/golden/*.txt after intended output changes
 ```
 
-Layout: `src/adapters/` parses each agent's format into the shared model (`src/model.rs`);
-`src/catalog.rs` discovers, caches, and links sessions; `src/render.rs` turns records into text;
-`src/cmd/` holds one file per command. See [docs/SPEC.md](docs/SPEC.md) for the design.
+Each agent's format is parsed into a shared model in `src/adapters/` (`src/model.rs`).
+`src/catalog.rs` finds, caches, and links sessions, `src/render.rs` turns records into text, and
+`src/cmd/` has one file per command. The design is in [docs/SPEC.md](docs/SPEC.md).
+
+Adding another agent means writing one adapter. Issues and PRs are welcome.
 
 ## License
 
-MIT.
+[MIT](LICENSE)

@@ -475,7 +475,7 @@ codeagentlog/
 
 ## Milestones
 
-Status: v0.1–v0.3 implemented (all commands, cache, child linking, `--json`, golden tests).
+Status: v0.1–v0.4 implemented (all commands, cache, child linking, `--json`, golden tests).
 
 1. **v0.1** — adapters (pi, claude, codex) + `ls` + `show` + `path`. No cache. Golden tests from fixtures.
 2. **v0.2** — `tree`, scope flags, child linking/nesting, metadata cache, `doctor`.
