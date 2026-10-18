@@ -93,8 +93,23 @@ enum Command {
     },
     /// Per-agent health: dirs, counts, parse errors, unknown record types.
     Doctor,
-    /// A paragraph to paste into AGENTS.md / CLAUDE.md.
+    /// Install the codeagentlog skill for your agents. Asks before writing anything.
+    #[command(
+        after_help = "Without --yes, setup lists the files it would write and asks on a terminal; elsewhere\n(e.g. run by an agent) it only lists them and writes nothing."
+    )]
+    Setup(SetupArgs),
+    /// The skill's instructions as text, to paste into AGENTS.md / CLAUDE.md yourself.
     Guide,
+}
+
+#[derive(Args)]
+pub struct SetupArgs {
+    /// Write without asking. Agents: only after the user has approved the listed files.
+    #[arg(long)]
+    yes: bool,
+    /// Remove the installed skill instead.
+    #[arg(long)]
+    remove: bool,
 }
 
 #[derive(Args, Clone)]
@@ -258,6 +273,7 @@ fn main() -> ExitCode {
         Command::Grep(a) => cmd::grep::run(&ctx, a),
         Command::Path { id } => cmd::path::run(&ctx, &id),
         Command::Doctor => cmd::doctor::run(&ctx),
+        Command::Setup(a) => cmd::setup::run(&ctx, a.yes, a.remove),
         Command::Guide => cmd::guide::run(&ctx),
     });
     match result {

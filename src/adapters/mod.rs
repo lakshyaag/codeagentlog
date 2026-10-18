@@ -57,6 +57,11 @@ impl Roots {
         Ok(Roots(roots))
     }
 
+    /// The agent's home dir (e.g. `~/.claude`).
+    pub fn home(&self, agent: Agent) -> &Path {
+        &self.0[&agent]
+    }
+
     pub fn adapter(&self, agent: Agent) -> Box<dyn Adapter> {
         let home = self.0[&agent].clone();
         match agent {

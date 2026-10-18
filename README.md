@@ -46,16 +46,17 @@ cargo install --git https://github.com/lakshyaag/codeagentlog --locked
 
 ### Or have your agent do it
 
-Paste this into Claude Code, Codex, pi, or Cursor. It installs the tool and teaches the agent to use
-it:
+Paste this into Claude Code, Codex, pi, or Cursor. The agent installs the tool, then shows you what
+the skill install would write and waits for your OK:
 
 ```text
 Install codeagentlog (https://github.com/lakshyaag/codeagentlog), a CLI for reading past coding-agent sessions.
 1. Run: curl -fsSL https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
    On Windows, run instead: powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
-2. Run `codeagentlog guide`. It installs to ~/.cargo/bin, so use that full path if the command isn't found yet.
-3. Add the guide's output to my global agent instructions, e.g. ~/.claude/CLAUDE.md for Claude Code or ~/.codex/AGENTS.md for Codex. Skip this if it's already there, and ask me if you're not sure which file I use.
-4. Run `codeagentlog doctor` and tell me which agents' sessions it found.
+   It installs to ~/.cargo/bin; use that full path if the command isn't found yet.
+2. Run `codeagentlog setup`. It writes nothing; it lists the skill files it would add. Show me that list and
+   explain that `codeagentlog setup --yes` writes exactly those files. Only run it if I say yes.
+3. Run `codeagentlog doctor` and tell me which agents' sessions it found.
 ```
 
 ## Quick start
@@ -69,11 +70,24 @@ codeagentlog tree ~/code                 # which folders have sessions, per agen
 
 ## Let your agents use it
 
-This is where it's most useful. The agent prompt above sets it up for you; to do it by hand, add the
-guide to your agent's instructions:
+This is where it's most useful. Install the codeagentlog skill and your agents learn to use it on
+their own:
 
 ```sh
-codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md
+codeagentlog setup
+```
+
+It lists the files it will add and asks before writing anything: one `SKILL.md` in
+`~/.claude/skills/` (Claude Code and Cursor) and one in `~/.agents/skills/` (Codex, pi, and Cursor),
+only for the agents you have. Run it again after upgrading to refresh the skill (`doctor` tells you
+when it's out of date), and `codeagentlog setup --remove` takes it back out. When an agent runs
+`setup` it can't answer the prompt, so it only gets the list and has to ask you before passing
+`--yes`.
+
+For an agent without skills support, paste the same instructions into its instructions file:
+
+```sh
+codeagentlog guide >> AGENTS.md
 ```
 
 Now you can say "pick up where the last session left off" or "how did we fix this in the other
@@ -147,7 +161,8 @@ dir, or `$CODEAGENTLOG_CURSOR_DB`). The database view has extra records, so its 
 don't match the plain view. `grep` only searches the transcripts.
 
 **Privacy:** everything stays on your machine. codeagentlog never writes to any agent's files
-(Cursor's database is opened read-only, without locking it) and makes no network requests. Its only
+(Cursor's database is opened read-only, without locking it) and makes no network requests. The one
+exception is `setup`, which adds its own skill folder only after you approve it. Its only other
 state is a metadata cache at `$XDG_CACHE_HOME/codeagentlog/meta.sqlite` (default `~/.cache/…`),
 which is safe to delete anytime. `--no-cache` skips it.
 

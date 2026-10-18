@@ -4,6 +4,7 @@ use std::fmt::Write;
 use anyhow::Result;
 use serde::Serialize;
 
+use super::setup::State;
 use super::{Ctx, to_json};
 use crate::cache::Cache;
 use crate::model::Agent;
@@ -62,12 +63,14 @@ pub fn run(ctx: &Ctx) -> Result<String> {
     let cache_path = Cache::path();
     let cache_size = std::fs::metadata(&cache_path).map(|m| m.len()).ok();
     let current_id = current.map(|i| catalog.entries[i].meta.display_id());
+    let skill = super::setup::targets(ctx);
 
     if ctx.json {
         return to_json(&serde_json::json!({
             "agents": reports,
             "cache": { "path": cache_path, "bytes": cache_size, "enabled": ctx.use_cache },
             "current": current_id,
+            "skill": skill,
         }));
     }
 
@@ -99,5 +102,13 @@ pub fn run(ctx: &Ctx) -> Result<String> {
     let size = cache_size.map(|b| crate::render::human_bytes(b as usize)).unwrap_or_else(|| "absent".into());
     writeln!(out, "cache  {} ({size}{})", tilde(&cache_path), if ctx.use_cache { "" } else { ", disabled" })?;
     writeln!(out, "current  {}", current_id.as_deref().unwrap_or("(not detected)"))?;
+    for t in &skill {
+        let state = match t.state {
+            State::Current => "up to date",
+            State::Outdated => "outdated (run `codeagentlog setup`)",
+            State::Missing => "not installed (run `codeagentlog setup`)",
+        };
+        writeln!(out, "skill  {} {state}", tilde(&t.path))?;
+    }
     Ok(out)
 }

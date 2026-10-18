@@ -24,7 +24,8 @@ because it only worked inside pi.
    `--agent`, `--since`); the tool never narrows on its own.
 2. **Formatting only.** The tool's job is to turn each agent's on-disk format into one readable
    transcript and one listing format, so agents stop writing parsers.
-3. **Read-only.** Never writes into agent directories. Only writes its own cache.
+3. **Read-only.** Never writes into agent directories. Only writes its own cache, plus its own
+   skill folder when the user approves `setup`.
 4. **Agent-first UX.** Compact text output by default, `--json` everywhere, and every truncated
    output ends with the exact command to continue.
 5. **Not boxed into cwd.** Folder tree and cross-folder listing are first-class.
@@ -52,6 +53,7 @@ codeagentlog grep   <PATTERN> [PATH] [scope flags] [--agent X] [--role user|assi
                     [-i] [--regex] [--events] [--context N] [--limit N]
 codeagentlog path   <ID>
 codeagentlog doctor
+codeagentlog setup  [--yes] [--remove]
 codeagentlog guide
 ```
 
@@ -245,14 +247,25 @@ codex:01a1062c  …
 Per agent: root dir, file count, session count, child count, parse errors, unknown record
 types with counts, newest/oldest session. This is how format drift gets noticed.
 
+### `setup`
+
+Installs the agent skill, `skills/codeagentlog/SKILL.md` (embedded in the binary), as
+`<claude home>/skills/codeagentlog/SKILL.md` (Claude Code, Cursor) and
+`~/.agents/skills/codeagentlog/SKILL.md` (Codex, pi, Cursor), for agents whose home dir exists.
+Each target is `missing`, `outdated` (content differs from this binary's skill) or `current`.
+
+Writes only with explicit approval: `--yes`, or `y` at a prompt when stdin and stderr are a
+terminal. Otherwise (an agent running it, `--json`) it prints the plan, writes nothing, and tells
+the agent to ask the user before `--yes`. Re-running is safe; `--remove` deletes only the files it
+installed (same approval rule). `doctor` reports each target's state.
+
+Release rule: the skill ships inside the binary, so it changes only with a release, and `setup`
+after an upgrade refreshes it.
+
 ### `guide`
 
-Prints a short paragraph to paste into global `AGENTS.md` / `~/.claude/CLAUDE.md` / Codex
-`AGENTS.md`, e.g.:
-
-> When I refer to a previous/other conversation or session, use `codeagentlog`:
-> `codeagentlog ls` (this folder), `codeagentlog tree` (find folders), `codeagentlog grep <kw>`,
-> then `codeagentlog show <id> [--turns A..B]`. Don't parse session files directly.
+Prints the skill's body (no frontmatter): the same instructions, for agents without skills support
+to paste into `AGENTS.md` / `CLAUDE.md`.
 
 ---
 
@@ -467,7 +480,8 @@ codeagentlog/
   src/ids.rs                  namespaced id parse/resolve/shorten
   src/cache.rs                meta.sqlite
   src/render/{text,json}.rs   tree/ls/show/grep renderers, truncation + footers
-  src/cmd/{tree,ls,show,grep,path,doctor,guide}.rs
+  src/cmd/{tree,ls,show,grep,path,doctor,setup,guide}.rs
+  skills/codeagentlog/SKILL.md the agent skill `setup` installs and `guide` prints
   src/adapters/{mod,pi,claude,codex,cursor,cursor_db}.rs
   tests/fixtures/{pi,claude,codex,cursor}/*.jsonl   small synthetic samples
   tests/*.rs                  golden-output tests per adapter + per command

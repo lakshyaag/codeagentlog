@@ -446,3 +446,46 @@ fn show_cursor_db_reads_the_full_conversation() {
     assert!(!ok && err.contains("Cursor's database not found"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn setup_writes_only_with_approval() {
+    let home = std::env::temp_dir().join(format!("codeagentlog-setup-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    for agent in [".claude", ".codex"] {
+        std::fs::create_dir_all(home.join(agent)).unwrap();
+    }
+    let setup = |args: &[&str]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_codeagentlog"));
+        for var in ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR"] {
+            cmd.env_remove(var);
+        }
+        let out = cmd.env("HOME", &home).arg("setup").args(args).stdin(std::process::Stdio::null()).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let claude = home.join(".claude/skills/codeagentlog/SKILL.md");
+    let shared = home.join(".agents/skills/codeagentlog/SKILL.md");
+
+    // Without --yes and without a terminal: list the plan, write nothing.
+    let plan = setup(&[]);
+    assert!(plan.contains("create   ~/.claude/skills/codeagentlog/SKILL.md  (claude)"), "{plan}");
+    assert!(plan.contains("create   ~/.agents/skills/codeagentlog/SKILL.md  (codex)"), "{plan}");
+    assert!(plan.contains("Nothing was written") && plan.contains("codeagentlog setup --yes"));
+    assert!(!claude.exists() && !shared.exists());
+
+    setup(&["--yes"]);
+    let skill = std::fs::read_to_string(&claude).unwrap();
+    assert!(skill.starts_with("---\nname: codeagentlog\n"));
+    assert_eq!(std::fs::read_to_string(&shared).unwrap(), skill);
+    assert!(skill.ends_with(&run(&["guide"])), "guide is the skill without its frontmatter");
+    assert!(setup(&[]).contains("installed and up to date"));
+
+    std::fs::write(&shared, "old").unwrap();
+    assert!(setup(&[]).contains("update   ~/.agents/skills/codeagentlog/SKILL.md"));
+
+    assert!(setup(&["--remove"]).contains("Nothing was written"));
+    assert!(claude.exists());
+    setup(&["--remove", "--yes"]);
+    assert!(!claude.exists() && !shared.exists());
+    let _ = std::fs::remove_dir_all(&home);
+}

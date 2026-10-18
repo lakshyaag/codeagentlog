@@ -5,6 +5,7 @@ pub mod grep;
 pub mod guide;
 pub mod ls;
 pub mod path;
+pub mod setup;
 pub mod show;
 pub mod tree;
 
