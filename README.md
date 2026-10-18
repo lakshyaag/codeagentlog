@@ -6,29 +6,30 @@ throwaway `jq` parsers over multi-MB session logs.
 
 ## Install
 
-Requires **Rust 1.85+** ([rustup](https://rustup.rs)).
-
-From a clone of this repo:
+macOS and Linux:
 
 ```sh
-cargo install --path . --locked
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.sh | sh
 ```
 
-Once the GitHub remote exists, the same build can be installed without a local checkout:
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/lakshyaag/codeagentlog/releases/latest/download/codeagentlog-installer.ps1 | iex"
+```
+
+Or download a binary from [Releases](https://github.com/lakshyaag/codeagentlog/releases). To
+build from source instead (Rust 1.85+):
 
 ```sh
-cargo install --git https://github.com/<you>/codeagentlog --locked
+cargo install --git https://github.com/lakshyaag/codeagentlog --locked
 ```
 
-`--locked` uses the committed `Cargo.lock` so the dependency set matches CI. Then tell
-agents how to use it:
+Then tell agents how to use it:
 
 ```sh
 codeagentlog guide >> ~/.claude/CLAUDE.md   # or AGENTS.md
 ```
-
-This crate is not on crates.io yet, so `cargo install codeagentlog` will not work until it
-is published there.
 
 ## Usage
 

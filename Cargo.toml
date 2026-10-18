@@ -4,10 +4,12 @@ version = "0.1.0"
 authors=["Lakshya Agarwal <lakshyaag1202@gmail.com>"]
 edition = "2024"
 rust-version = "1.85"
-description = "Find and read past coding-agent conversations (pi, Claude Code, Codex)"
+description = "Find and read past coding-agent conversations (pi, Claude Code, Codex, Cursor)"
+repository = "https://github.com/lakshyaag/codeagentlog"
+homepage = "https://github.com/lakshyaag/codeagentlog"
 license = "MIT"
 readme = "README.md"
-keywords = ["cli", "agents", "claude", "codex", "pi"]
+keywords = ["cli", "agents", "claude", "codex", "cursor"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
@@ -24,3 +26,8 @@ walkdir = "2.5.0"
 [profile.release]
 lto = "thin"
 codegen-units = 4
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -481,7 +481,7 @@ Status: v0.1–v0.3 implemented (all commands, cache, child linking, `--json`, g
 2. **v0.2** — `tree`, scope flags, child linking/nesting, metadata cache, `doctor`.
 3. **v0.3** — `grep`, `guide`, `(current)` marker, `--json` on all commands.
 4. **v0.4** — Cursor: agent-transcripts adapter + `show --db` from the IDE `state.vscdb`.
-5. **later** — cursor-agent `store.db`, OpenCode (`opencode.db`), Gemini, Amp, Factory; Homebrew/cargo install.
+5. **later** — cursor-agent `store.db`, OpenCode (`opencode.db`), Gemini, Amp, Factory; Homebrew tap, crates.io.
 
 ## Open TODOs
 
