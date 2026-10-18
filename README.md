@@ -12,6 +12,8 @@ files. Whenever I wanted "what did we try in this repo last week?" — or worse,
 wanted to know — the answer was another throwaway `jq` parser. This is the tool I wanted instead:
 read-only, works offline, meant to be read by agents as much as by people.
 
+![codeagentlog listing, searching, and opening sessions from pi, Claude Code, and Cursor](docs/demo.gif)
+
 ```console
 $ codeagentlog grep "rate limit" --since 7d
 claude:d3d1f0a2-5c1e-4b7a-9e0f-2a6c8b1d4e37  ~/code/api  2026-10-14  6 prompts  212 records
